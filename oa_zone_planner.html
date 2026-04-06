@@ -1,0 +1,630 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>OA Zone Planner</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=DM+Sans:wght@300;400;500;600&display=swap');
+
+  :root {
+    --bg: #0f0f11;
+    --surface: #16161a;
+    --surface2: #1e1e24;
+    --border: rgba(255,255,255,0.08);
+    --border2: rgba(255,255,255,0.14);
+    --text: #e8e8ee;
+    --text2: #888899;
+    --text3: #555566;
+    --accent: #6c8fff;
+    --accent2: #a78bfa;
+    --open: #f97316;
+    --open-dim: rgba(249,115,22,0.15);
+    --filled: #22c55e;
+    --filled-dim: rgba(34,197,94,0.12);
+    --danger: #ef4444;
+    --warn: #eab308;
+    --mono: 'DM Mono', monospace;
+    --sans: 'DM Sans', sans-serif;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--sans);
+    font-size: 14px;
+    line-height: 1.5;
+    height: 100vh;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+  }
+
+  header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 20px;
+    height: 52px;
+    border-bottom: 1px solid var(--border);
+    background: var(--surface);
+    flex-shrink: 0;
+    gap: 16px;
+  }
+
+  .logo {
+    font-family: var(--mono);
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--text);
+    letter-spacing: 0.04em;
+    white-space: nowrap;
+  }
+  .logo span { color: var(--accent); }
+
+  .header-stats {
+    display: flex;
+    gap: 2px;
+    flex: 1;
+    max-width: 700px;
+  }
+
+  .hstat {
+    flex: 1;
+    background: var(--surface2);
+    border-radius: 6px;
+    padding: 5px 10px;
+    display: flex;
+    flex-direction: column;
+  }
+  .hstat-label { font-size: 9px; color: var(--text3); letter-spacing: 0.06em; text-transform: uppercase; }
+  .hstat-val { font-size: 16px; font-weight: 600; font-family: var(--mono); line-height: 1.2; }
+  .hstat-val.accent { color: var(--accent); }
+  .hstat-val.open-col { color: var(--open); }
+  .hstat-val.good { color: var(--filled); }
+
+  .controls {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-shrink: 0;
+  }
+
+  .slider-group {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 5px 10px;
+  }
+  .slider-label { font-size: 10px; color: var(--text2); white-space: nowrap; font-family: var(--mono); }
+  .slider-val { font-size: 12px; font-weight: 500; font-family: var(--mono); color: var(--text); min-width: 30px; text-align: right; }
+
+  input[type=range] {
+    -webkit-appearance: none;
+    width: 110px;
+    height: 3px;
+    background: var(--border2);
+    border-radius: 2px;
+    outline: none;
+  }
+  input[type=range]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 14px; height: 14px;
+    border-radius: 50%;
+    background: var(--accent);
+    cursor: pointer;
+    border: 2px solid var(--bg);
+  }
+
+  .main {
+    display: grid;
+    grid-template-columns: 320px 1fr;
+    flex: 1;
+    overflow: hidden;
+  }
+
+  .sidebar {
+    border-right: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    background: var(--surface);
+    overflow: hidden;
+  }
+
+  .sidebar-toolbar {
+    padding: 10px 12px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    gap: 6px;
+    flex-shrink: 0;
+  }
+
+  .pill-btn {
+    font-size: 11px;
+    font-family: var(--mono);
+    padding: 4px 10px;
+    border-radius: 20px;
+    border: 1px solid var(--border2);
+    background: transparent;
+    color: var(--text2);
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+  .pill-btn.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+  .pill-btn:hover:not(.active) { border-color: var(--border2); color: var(--text); background: var(--surface2); }
+
+  .zone-list {
+    overflow-y: auto;
+    flex: 1;
+    scrollbar-width: thin;
+    scrollbar-color: var(--border2) transparent;
+  }
+
+  .zone-row {
+    padding: 10px 12px;
+    border-bottom: 1px solid var(--border);
+    cursor: pointer;
+    display: flex;
+    align-items: flex-start;
+    gap: 9px;
+    transition: background 0.1s;
+  }
+  .zone-row:hover { background: var(--surface2); }
+  .zone-row.selected { background: rgba(108,143,255,0.1); border-left: 2px solid var(--accent); padding-left: 10px; }
+
+  .zone-dot {
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    flex-shrink: 0;
+    margin-top: 5px;
+  }
+
+  .zone-info { flex: 1; min-width: 0; }
+  .zone-id { font-family: var(--mono); font-size: 9px; color: var(--text3); }
+  .zone-name { font-size: 13px; font-weight: 500; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .zone-row.selected .zone-name { color: var(--accent); }
+  .zone-sub { font-size: 11px; color: var(--text2); margin-top: 1px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+  .zone-bar-bg { height: 2px; background: var(--border); border-radius: 1px; margin-top: 5px; }
+  .zone-bar { height: 2px; border-radius: 1px; transition: width 0.3s; }
+
+  .zone-pct {
+    font-size: 10px;
+    font-family: var(--mono);
+    font-weight: 500;
+    margin-top: 2px;
+    flex-shrink: 0;
+    padding: 1px 5px;
+    border-radius: 4px;
+  }
+
+  .map-area {
+    display: flex;
+    flex-direction: column;
+    background: var(--bg);
+    overflow: hidden;
+  }
+
+  .map-header {
+    padding: 10px 16px;
+    border-bottom: 1px solid var(--border);
+    background: var(--surface);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-shrink: 0;
+  }
+
+  .map-title { font-size: 13px; font-weight: 500; color: var(--text); }
+  .map-legend { display: flex; gap: 14px; font-size: 11px; color: var(--text2); align-items: center; }
+  .leg-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; margin-right: 4px; }
+
+  #map-svg { width: 100%; display: block; flex: 1; }
+
+  .detail-panel {
+    border-top: 1px solid var(--border);
+    background: var(--surface);
+    padding: 14px 16px;
+    flex-shrink: 0;
+    display: none;
+  }
+  .detail-panel.visible { display: block; }
+
+  .detail-top {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 10px;
+  }
+  .detail-name { font-size: 15px; font-weight: 600; color: var(--text); }
+  .status-badge {
+    font-size: 10px;
+    font-family: var(--mono);
+    padding: 2px 8px;
+    border-radius: 20px;
+    font-weight: 500;
+  }
+  .badge-open { background: var(--open-dim); color: var(--open); border: 1px solid rgba(249,115,22,0.3); }
+  .badge-filled { background: var(--filled-dim); color: var(--filled); border: 1px solid rgba(34,197,94,0.2); }
+
+  .detail-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 8px;
+    margin-bottom: 10px;
+  }
+  .dmetric {
+    background: var(--surface2);
+    border-radius: 6px;
+    padding: 8px 10px;
+    border: 1px solid var(--border);
+  }
+  .dmetric-label { font-size: 9px; color: var(--text3); text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 3px; }
+  .dmetric-val { font-size: 17px; font-weight: 600; font-family: var(--mono); color: var(--text); }
+  .dmetric-val.danger { color: var(--danger); }
+  .dmetric-val.warn { color: var(--warn); }
+  .dmetric-val.good { color: var(--filled); }
+
+  .sugg-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .sugg-label { font-size: 10px; color: var(--text3); font-family: var(--mono); white-space: nowrap; }
+  .sugg-pill {
+    font-size: 11px;
+    padding: 2px 9px;
+    border-radius: 20px;
+    border: 1px solid var(--border2);
+    color: var(--text2);
+    font-family: var(--mono);
+  }
+
+  .close-btn {
+    margin-left: auto;
+    background: none;
+    border: none;
+    color: var(--text3);
+    cursor: pointer;
+    font-size: 16px;
+    padding: 0 4px;
+  }
+  .close-btn:hover { color: var(--text); }
+
+  .tooltip {
+    position: fixed;
+    background: var(--surface2);
+    border: 1px solid var(--border2);
+    border-radius: 8px;
+    padding: 9px 12px;
+    font-size: 12px;
+    pointer-events: none;
+    z-index: 9999;
+    max-width: 200px;
+    display: none;
+  }
+  .tt-name { font-weight: 500; color: var(--text); margin-bottom: 3px; }
+  .tt-sub { color: var(--text2); font-size: 11px; }
+
+  .map-wrap { flex: 1; overflow: hidden; position: relative; display: flex; flex-direction: column; }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">OA <span>//</span> Zone Planner</div>
+  <div class="header-stats">
+    <div class="hstat"><div class="hstat-label">Stores</div><div class="hstat-val accent" id="h-stores">4,759</div></div>
+    <div class="hstat"><div class="hstat-label">Zones</div><div class="hstat-val accent" id="h-zones">24</div></div>
+    <div class="hstat"><div class="hstat-label">OAs placed</div><div class="hstat-val good" id="h-placed">14</div></div>
+    <div class="hstat"><div class="hstat-label">Open zones</div><div class="hstat-val open-col" id="h-open">10</div></div>
+    <div class="hstat"><div class="hstat-label">Target / zone</div><div class="hstat-val" id="h-target">198</div></div>
+    <div class="hstat"><div class="hstat-label">Std dev</div><div class="hstat-val" id="h-std">—</div></div>
+  </div>
+  <div class="controls">
+    <div class="slider-group">
+      <span class="slider-label">Min stores</span>
+      <input type="range" id="sl-min" min="0" max="350" value="0" step="5">
+      <span class="slider-val" id="sl-min-val">0</span>
+    </div>
+    <div class="slider-group">
+      <span class="slider-label">Max stores</span>
+      <input type="range" id="sl-max" min="50" max="450" value="450" step="5">
+      <span class="slider-val" id="sl-max-val">450</span>
+    </div>
+    <div class="slider-group">
+      <span class="slider-label">Leeway ±</span>
+      <input type="range" id="sl-leeway" min="0" max="60" value="30" step="5">
+      <span class="slider-val" id="sl-leeway-val">30%</span>
+    </div>
+  </div>
+</header>
+
+<div class="main">
+  <div class="sidebar">
+    <div class="sidebar-toolbar">
+      <button class="pill-btn active" id="f-all" onclick="setFilter('all')">All</button>
+      <button class="pill-btn" id="f-filled" onclick="setFilter('filled')">Filled</button>
+      <button class="pill-btn" id="f-open" onclick="setFilter('open')">Open</button>
+      <button class="pill-btn" id="f-heavy" onclick="setFilter('heavy')">Over target</button>
+      <button class="pill-btn" id="f-light" onclick="setFilter('light')">Under target</button>
+    </div>
+    <div class="zone-list" id="zlist"></div>
+  </div>
+
+  <div class="map-area">
+    <div class="map-header">
+      <div class="map-title" id="map-title">All zones</div>
+      <div class="map-legend">
+        <span><span class="leg-dot" style="background:#6c8fff;"></span>Filled OA</span>
+        <span><span class="leg-dot" style="background:#f97316;"></span>Open zone</span>
+        <span style="color:var(--text3);font-size:10px;">Click a dot or row to inspect · Sliders filter & re-evaluate zones</span>
+      </div>
+    </div>
+    <div class="map-wrap">
+      <svg id="map-svg" viewBox="0 0 900 440"></svg>
+    </div>
+    <div class="detail-panel" id="detail-panel">
+      <div class="detail-top">
+        <div class="detail-name" id="d-name">—</div>
+        <span class="status-badge" id="d-badge">—</span>
+        <button class="close-btn" onclick="clearSel()">✕</button>
+      </div>
+      <div class="detail-grid" id="d-grid"></div>
+      <div class="sugg-row" id="d-sugg"></div>
+    </div>
+  </div>
+</div>
+
+<div class="tooltip" id="tip"></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.8.5/d3.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/topojson/3.0.2/topojson.min.js"></script>
+<script>
+const RAW = {"base_zones":[{"orig":"Central Plains","count":374,"oa":"Finley Klement","oa_city":"Kansas City","oa_state":"MO","oa_lat":39.091,"oa_lon":-94.613,"center_lat":38.6499,"center_lon":-95.2697,"sugg":[],"display_name":"Central Plains","split":true},{"orig":"Deep South","count":379,"oa":"Jesse White","oa_city":"Atlanta","oa_state":"GA","oa_lat":33.772,"oa_lon":-84.415,"center_lat":33.9685,"center_lon":-84.2012,"sugg":[],"display_name":"Deep South","split":true},{"orig":"Florida Peninsula","count":306,"oa":"Dustin Patton","oa_city":"Orlando","oa_state":"FL","oa_lat":28.539,"oa_lon":-81.394,"center_lat":28.1766,"center_lon":-81.6271,"sugg":[],"display_name":"Florida Peninsula","split":true},{"orig":"Great Lakes East","count":413,"oa":"Sarah Heitz","oa_city":"Indianapolis","oa_state":"IN","oa_lat":39.789,"oa_lon":-86.171,"center_lat":40.6014,"center_lon":-85.2168,"sugg":[],"display_name":"Great Lakes East","split":true},{"orig":"Gulf Central","count":253,"oa":"Paul Inacio","oa_city":"Pensacola","oa_state":"FL","oa_lat":30.446,"oa_lon":-87.212,"center_lat":31.2841,"center_lon":-89.8279,"sugg":[],"display_name":"Gulf Central","split":true},{"orig":"Mid-Atlantic South","count":355,"oa":"Derron Spencer","oa_city":"Raleigh","oa_state":"NC","oa_lat":35.834,"oa_lon":-78.667,"center_lat":36.8203,"center_lon":-79.2482,"sugg":[],"display_name":"Mid-Atlantic South","split":true},{"orig":"Mid-South","count":252,"oa":null,"oa_city":null,"oa_state":null,"oa_lat":null,"oa_lon":null,"center_lat":36.5503,"center_lon":-89.3749,"sugg":[["Memphis","TN"],["Jackson","TN"],["Paducah","KY"]],"display_name":"Mid-South","split":false},{"orig":"Northeast Metro","count":212,"oa":"Tim","oa_city":"Minneola","oa_state":"NY","oa_lat":40.747,"oa_lon":-73.64,"center_lat":41.3071,"center_lon":-74.0576,"sugg":[],"display_name":"Northeast Metro","split":true},{"orig":"Ohio Valley","count":315,"oa":"Kathleen Basbagill","oa_city":"Pittsburgh","oa_state":"PA","oa_lat":40.408,"oa_lon":-79.973,"center_lat":40.4786,"center_lon":-80.1265,"sugg":[],"display_name":"Ohio Valley","split":true},{"orig":"Pacific Northwest","count":169,"oa":"Cellesha Steel","oa_city":"Seattle","oa_state":"WA","oa_lat":47.44,"oa_lon":-122.306,"center_lat":46.0806,"center_lon":-119.5232,"sugg":[],"display_name":"Pacific Northwest","split":true},{"orig":"Pacific West","count":319,"oa":"Jiselle Medina","oa_city":"Los Angeles","oa_state":"CA","oa_lat":33.86,"oa_lon":-118.238,"center_lat":34.9645,"center_lon":-117.9633,"sugg":[],"display_name":"Pacific West","split":true},{"orig":"Southwest / Rockies","count":309,"oa":"Hellen Lobaccaro","oa_city":"Albuquerque","oa_state":"NM","oa_lat":35.103,"oa_lon":-106.623,"center_lat":35.6464,"center_lon":-108.3297,"sugg":[],"display_name":"Southwest / Rockies","split":true},{"orig":"Texas North / Oklahoma","count":424,"oa":"Danielle Hudson","oa_city":"Dallas","oa_state":"TX","oa_lat":32.886,"oa_lon":-97.011,"center_lat":34.3522,"center_lon":-97.6295,"sugg":[],"display_name":"Texas North / Oklahoma","split":true},{"orig":"Texas South","count":405,"oa":"AKM Shaju","oa_city":"Houston","oa_state":"TX","oa_lat":29.974,"oa_lon":-95.346,"center_lat":29.5567,"center_lon":-96.5478,"sugg":[],"display_name":"Texas South","split":true},{"orig":"Upper Midwest","count":274,"oa":"Sergio Villasenor","oa_city":"Chicago","oa_state":"IL","oa_lat":41.89,"oa_lon":-87.647,"center_lat":42.9341,"center_lon":-90.1054,"sugg":[],"display_name":"Upper Midwest","split":true}],"splits":{"Central Plains":{"a_count":261,"b_count":113,"a_center":[38.5204,-94.839],"b_center":[42.3331,-97.9821],"name_a":"Central Plains","name_b":"Northern Plains","sugg_b":[["Sioux City","IA"],["Norfolk","NE"],["Sioux Falls","SD"]]},"Deep South":{"a_count":242,"b_count":137,"a_center":[34.1282,-84.9487],"b_center":[33.9803,-81.5513],"name_a":"Deep South West","name_b":"Deep South East","sugg_b":[["Columbia","SC"],["Augusta","GA"],["Charlotte","NC"]]},"Florida Peninsula":{"a_count":217,"b_count":89,"a_center":[28.9509,-82.0299],"b_center":[26.2887,-80.6337],"name_a":"Florida North","name_b":"Florida South","sugg_b":[["Miami","FL"],["Fort Lauderdale","FL"],["West Palm Beach","FL"]]},"Great Lakes East":{"a_count":217,"b_count":196,"a_center":[39.0295,-85.3469],"b_center":[42.1333,-84.7303],"name_a":"Great Lakes South","name_b":"Great Lakes North","sugg_b":[["Lansing","MI"],["Ann Arbor","MI"],["Toledo","OH"]]},"Gulf Central":{"a_count":85,"b_count":168,"a_center":[30.4734,-88.1083],"b_center":[31.7257,-90.7312],"name_a":"Gulf Central","name_b":"Gulf Coast East","sugg_b":[["Jackson","MS"],["Baton Rouge","LA"],["Mobile","AL"]]},"Mid-Atlantic South":{"a_count":197,"b_count":158,"a_center":[35.8031,-79.9216],"b_center":[37.5617,-77.12],"name_a":"Mid-Atlantic South","name_b":"Mid-Atlantic North","sugg_b":[["Richmond","VA"],["Fredericksburg","VA"],["Norfolk","VA"]]},"Northeast Metro":{"a_count":160,"b_count":52,"a_center":[40.7083,-73.9844],"b_center":[42.3439,-72.1524],"name_a":"Northeast Metro","name_b":"New England","sugg_b":[["Boston","MA"],["Providence","RI"],["Hartford","CT"]]},"Ohio Valley":{"a_count":202,"b_count":113,"a_center":[40.412,-81.2732],"b_center":[40.4613,-77.4663],"name_a":"Ohio Valley West","name_b":"Ohio Valley East","sugg_b":[["Harrisburg","PA"],["State College","PA"],["Altoona","PA"]]},"Pacific Northwest":{"a_count":109,"b_count":60,"a_center":[47.4893,-121.5746],"b_center":[43.5133,-117.3494],"name_a":"Pacific Northwest","name_b":"Inland Northwest","sugg_b":[["Portland","OR"],["Boise","ID"],["Spokane","WA"]]},"Pacific West":{"a_count":262,"b_count":57,"a_center":[34.3062,-117.3916],"b_center":[37.9859,-120.6207],"name_a":"Pacific West South","name_b":"Pacific West North","sugg_b":[["Sacramento","CA"],["Modesto","CA"],["Fresno","CA"]]},"Southwest / Rockies":{"a_count":163,"b_count":146,"a_center":[33.6215,-110.3927],"b_center":[41.0095,-106.7292],"name_a":"Southwest","name_b":"Rocky Mountain","sugg_b":[["Cheyenne","WY"],["Denver","CO"],["Casper","WY"]]},"Texas North / Oklahoma":{"a_count":326,"b_count":98,"a_center":[33.7785,-96.6714],"b_center":[34.2853,-101.6316],"name_a":"Texas North / Oklahoma","name_b":"West Texas / Panhandle","sugg_b":[["Lubbock","TX"],["Amarillo","TX"]]},"Texas South":{"a_count":222,"b_count":183,"a_center":[30.0737,-95.5085],"b_center":[28.5729,-98.2042],"name_a":"Texas South East","name_b":"Texas South West","sugg_b":[["San Antonio","TX"],["Corpus Christi","TX"],["Victoria","TX"]]},"Upper Midwest":{"a_count":203,"b_count":71,"a_center":[42.3376,-89.1321],"b_center":[44.6336,-92.8943],"name_a":"Upper Midwest South","name_b":"Upper Midwest North","sugg_b":[["Minneapolis","MN"],["Milwaukee","WI"],["Madison","WI"]]}}};
+
+const PAL = ["#6c8fff","#22c55e","#f97316","#a78bfa","#06b6d4","#f43f5e","#84cc16","#fb923c","#38bdf8","#c084fc","#4ade80","#fbbf24","#818cf8","#34d399","#fb7185","#a3e635"];
+
+const TOTAL = 4759;
+let selId = null, filt = 'all', minS = 0, maxS = 450, leeway = 30;
+
+function buildZones() {
+  const target = TOTAL / 24;
+  const zones = [];
+  let id = 1;
+  RAW.base_zones.forEach(bz => {
+    const sp = bz.split && RAW.splits[bz.orig];
+    const shouldSplit = sp && bz.count > target * (1 + leeway/100);
+    if (shouldSplit) {
+      zones.push({
+        id: id++, orig: bz.orig, name: sp.name_a, stores: sp.a_count,
+        oa: bz.oa, city: bz.oa_city, state: bz.oa_state,
+        oaLat: bz.oa_lat, oaLon: bz.oa_lon,
+        cLat: sp.a_center[0], cLon: sp.a_center[1],
+        open: false, sugg: [], part: 'A'
+      });
+      zones.push({
+        id: id++, orig: bz.orig, name: sp.name_b, stores: sp.b_count,
+        oa: null, city: null, state: null,
+        oaLat: sp.b_center[0], oaLon: sp.b_center[1],
+        cLat: sp.b_center[0], cLon: sp.b_center[1],
+        open: true, sugg: sp.sugg_b, part: 'B'
+      });
+    } else {
+      zones.push({
+        id: id++, orig: bz.orig, name: bz.display_name, stores: bz.count,
+        oa: bz.oa, city: bz.oa_city, state: bz.oa_state,
+        oaLat: bz.oa_lat, oaLon: bz.oa_lon,
+        cLat: bz.center_lat, cLon: bz.center_lon,
+        open: !bz.oa, sugg: bz.sugg, part: null
+      });
+    }
+  });
+  return zones;
+}
+
+let ZONES = buildZones();
+const target = () => TOTAL / ZONES.length;
+
+function visZone(z) {
+  if (z.stores < minS || z.stores > maxS) return false;
+  if (filt === 'filled' && z.open) return false;
+  if (filt === 'open' && !z.open) return false;
+  if (filt === 'heavy' && z.stores <= target() * (1 + leeway/100)) return false;
+  if (filt === 'light' && z.stores >= target() * (1 - leeway/100)) return false;
+  return true;
+}
+
+function pctStr(z) {
+  const p = Math.round((z.stores - target()) / target() * 100);
+  return (p >= 0 ? '+' : '') + p + '%';
+}
+function pctNum(z) { return (z.stores - target()) / target() * 100; }
+
+function renderStats() {
+  const t = Math.round(target());
+  const counts = ZONES.map(z=>z.stores);
+  const mean = counts.reduce((a,b)=>a+b,0)/counts.length;
+  const std = Math.round(Math.sqrt(counts.map(c=>(c-mean)**2).reduce((a,b)=>a+b,0)/counts.length));
+  const openCount = ZONES.filter(z=>z.open).length;
+  document.getElementById('h-zones').textContent = ZONES.length;
+  document.getElementById('h-open').textContent = openCount;
+  document.getElementById('h-target').textContent = t;
+  document.getElementById('h-std').textContent = std;
+}
+
+function renderList() {
+  const el = document.getElementById('zlist');
+  const t = target();
+  const maxSt = Math.max(...ZONES.map(z=>z.stores));
+  el.innerHTML = '';
+  ZONES.forEach(z => {
+    if (!visZone(z)) return;
+    const p = pctNum(z);
+    const pct = Math.round(p);
+    const pStr = (pct>=0?'+':'')+pct+'%';
+    const col = z.open ? '#f97316' : PAL[(z.id-1)%PAL.length];
+    const pctCol = Math.abs(p) > leeway ? (p>0?'#ef4444':'#38bdf8') : '#888899';
+    const pctBg = Math.abs(p) > leeway ? (p>0?'rgba(239,68,68,0.12)':'rgba(56,189,248,0.12)') : 'transparent';
+
+    const row = document.createElement('div');
+    row.className = 'zone-row' + (selId===z.id?' selected':'');
+    row.innerHTML = `
+      <div class="zone-dot" style="background:${col};"></div>
+      <div class="zone-info">
+        <div class="zone-id">Z${String(z.id).padStart(2,'0')} · ${z.orig}${z.part?' ('+z.part+')':''}</div>
+        <div class="zone-name">${z.name}</div>
+        <div class="zone-sub">${z.oa || (z.sugg.length?z.sugg[0][0]+', '+z.sugg[0][1]+' (rec.)':'Open — no OA')} · ${z.stores} stores</div>
+        <div class="zone-bar-bg"><div class="zone-bar" style="width:${Math.round(z.stores/maxSt*100)}%;background:${col};"></div></div>
+      </div>
+      <div class="zone-pct" style="color:${pctCol};background:${pctBg};">${pStr}</div>`;
+    row.addEventListener('click', () => { selId = z.id; renderAll(); });
+    el.appendChild(row);
+  });
+}
+
+const svg = d3.select('#map-svg');
+const W = 900, H = 440;
+const proj = d3.geoAlbersUsa().scale(1080).translate([440, 235]);
+const pg = d3.geoPath(proj);
+
+function renderMap() {
+  svg.selectAll('.vc,.od,.ol').remove();
+  const t = target();
+  const pts = ZONES.filter(z=>visZone(z)).map(z=>{
+    const p = proj([z.cLon, z.cLat]);
+    return p ? {...z, px:p[0], py:p[1]} : null;
+  }).filter(Boolean);
+
+  if (pts.length > 1) {
+    const del = d3.Delaunay.from(pts, d=>d.px, d=>d.py);
+    const vor = del.voronoi([0,0,W,H]);
+    svg.selectAll('.vc').data(pts).join('path').attr('class','vc')
+      .attr('d',(d,i)=>vor.renderCell(i))
+      .attr('fill', d => {
+        const p = pctNum(d);
+        if (Math.abs(p) > leeway) return p>0 ? 'rgba(239,68,68,0.12)' : 'rgba(56,189,248,0.1)';
+        return PAL[(d.id-1)%PAL.length]+'18';
+      })
+      .attr('stroke', d => PAL[(d.id-1)%PAL.length])
+      .attr('stroke-width', d => selId===d.id ? 1.5 : 0.7)
+      .attr('stroke-opacity', 0.5)
+      .on('click', (_,d) => { selId=d.id; renderAll(); })
+      .style('cursor','pointer');
+    svg.selectAll('.sp').raise();
+  }
+
+  svg.selectAll('.od').data(pts).join('circle').attr('class','od')
+    .attr('cx',d=>d.px).attr('cy',d=>d.py)
+    .attr('r', d => selId===d.id ? 9 : 6)
+    .attr('fill', d => d.open ? '#f97316' : PAL[(d.id-1)%PAL.length])
+    .attr('stroke', d => selId===d.id ? '#fff' : '#0f0f11')
+    .attr('stroke-width', d => selId===d.id ? 2 : 1.5)
+    .style('cursor','pointer')
+    .on('click', (_,d) => { selId=d.id; renderAll(); })
+    .on('mousemove', (event,d) => {
+      const p = Math.round(pctNum(d));
+      const pStr = (p>=0?'+':'')+p+'%';
+      const tip = document.getElementById('tip');
+      tip.style.display='block';
+      tip.style.left=(event.clientX+14)+'px';
+      tip.style.top=(event.clientY-10)+'px';
+      tip.innerHTML=`<div class="tt-name">Z${d.id} — ${d.name}</div><div class="tt-sub">${d.oa||'Open zone'} · ${d.city?d.city+', '+d.state:''}</div><div class="tt-sub" style="margin-top:3px;">${d.stores} stores (${pStr} vs target)</div>`;
+    })
+    .on('mouseleave', () => { document.getElementById('tip').style.display='none'; });
+
+  svg.selectAll('.ol').data(pts).join('text').attr('class','ol')
+    .attr('x',d=>d.px).attr('y',d=>d.py-10)
+    .attr('text-anchor','middle')
+    .attr('font-size',8).attr('font-weight',500)
+    .attr('fill','rgba(255,255,255,0.3)')
+    .attr('pointer-events','none')
+    .text(d=>d.id);
+
+  document.getElementById('map-title').textContent = selId
+    ? `Zone ${selId} — ${ZONES.find(z=>z.id===selId)?.name||''}`
+    : `${pts.length} zone${pts.length!==1?'s':''} visible`;
+}
+
+function renderDetail() {
+  const panel = document.getElementById('detail-panel');
+  if (!selId) { panel.classList.remove('visible'); return; }
+  const z = ZONES.find(z=>z.id===selId);
+  if (!z) { panel.classList.remove('visible'); return; }
+  panel.classList.add('visible');
+
+  const t = target();
+  const p = Math.round(pctNum(z));
+  const pStr = (p>=0?'+':'')+p+'%';
+  const pCol = Math.abs(p)>40?'danger':Math.abs(p)>20?'warn':'good';
+
+  document.getElementById('d-name').textContent = `Zone ${z.id} — ${z.name}`;
+  const badge = document.getElementById('d-badge');
+  badge.textContent = z.open ? 'Open — needs OA' : 'Filled';
+  badge.className = 'status-badge ' + (z.open ? 'badge-open' : 'badge-filled');
+
+  document.getElementById('d-grid').innerHTML = `
+    <div class="dmetric"><div class="dmetric-label">Stores</div><div class="dmetric-val">${z.stores}</div></div>
+    <div class="dmetric"><div class="dmetric-label">vs target</div><div class="dmetric-val ${pCol}">${pStr}</div></div>
+    <div class="dmetric"><div class="dmetric-label">Target</div><div class="dmetric-val">${Math.round(t)}</div></div>
+    <div class="dmetric"><div class="dmetric-label">OA home</div><div class="dmetric-val" style="font-size:13px;">${z.city?z.city+', '+z.state:'—'}</div></div>`;
+
+  const sugg = document.getElementById('d-sugg');
+  if (z.open && z.sugg.length) {
+    sugg.innerHTML = `<span class="sugg-label">Hire cities →</span>${z.sugg.map(s=>`<span class="sugg-pill">${s[0]}, ${s[1]}</span>`).join('')}`;
+  } else if (z.oa) {
+    sugg.innerHTML = `<span class="sugg-label">OA →</span><span class="sugg-pill">${z.oa}</span><span class="sugg-pill">${z.city}, ${z.state}</span>`;
+  } else {
+    sugg.innerHTML = '';
+  }
+}
+
+function renderAll() {
+  ZONES = buildZones();
+  renderStats();
+  renderList();
+  renderMap();
+  renderDetail();
+  if (selId && !ZONES.find(z=>z.id===selId)) { selId=null; renderDetail(); }
+}
+
+function clearSel() { selId=null; renderAll(); }
+
+function setFilter(f) {
+  filt = f;
+  ['all','filled','open','heavy','light'].forEach(k=>{
+    document.getElementById('f-'+k)?.classList.toggle('active', k===f);
+  });
+  renderAll();
+}
+
+document.getElementById('sl-min').addEventListener('input', function() {
+  minS = +this.value;
+  document.getElementById('sl-min-val').textContent = this.value;
+  renderAll();
+});
+document.getElementById('sl-max').addEventListener('input', function() {
+  maxS = +this.value;
+  document.getElementById('sl-max-val').textContent = this.value;
+  renderAll();
+});
+document.getElementById('sl-leeway').addEventListener('input', function() {
+  leeway = +this.value;
+  document.getElementById('sl-leeway-val').textContent = this.value+'%';
+  renderAll();
+});
+
+d3.json('https://cdn.jsdelivr.net/npm/us-atlas@3/states-10m.json').then(us => {
+  svg.selectAll('.sp')
+    .data(topojson.feature(us, us.objects.states).features)
+    .join('path').attr('class','sp')
+    .attr('d', pg)
+    .attr('fill','#1a1a1f')
+    .attr('stroke','#2a2a33')
+    .attr('stroke-width', 0.6);
+  renderAll();
+});
+</script>
+</body>
+</html>
