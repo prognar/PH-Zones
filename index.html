@@ -230,7 +230,7 @@ const OAS = [
   {name:"Sarah Heitz",lat:37.975615,lon:-87.546905},
   {name:"Danielle Hudson",lat:32.744323,lon:-97.319097},
   {name:"AKM Shaju",lat:29.524448,lon:-95.200452},
-  {name:"Dustin Patton",lat:28.539225,lon:-81.394263},
+  {name:"Dustin Patton (Tampa)",lat:27.972561,lon:-82.530510},
   {name:"Jesse White",lat:33.772114,lon:-84.415325},
   {name:"Kathleen Basbagill",lat:40.292269,lon:-83.071464},
   {name:"Derron Spencer",lat:35.834247,lon:-78.66652},
@@ -261,7 +261,7 @@ const TBH_INIT = [
 ];
 
 // Zone colors (distinct)
-const ZONE_COLORS = [
+let zoneColors = [
   "#e6194b","#3cb44b","#ffe119","#4363d8","#f58231","#911eb4","#42d4f4","#f032e6",
   "#bfef45","#fabed4","#469990","#dcbeff","#9a6324","#fffac8","#800000","#aaffc3",
   "#808000","#ffd8b1","#000075","#a9a9a9","#ff6f61","#6a3d9a","#b3e4a3","#f4a582"
@@ -843,14 +843,14 @@ function redrawMap() {
     const inAreaFilter = !filterArea || STORES[i].area === filterArea;
     const show = inFilter && inAreaFilter;
     ctx.globalAlpha = isHover ? 1 : (show ? 0.7 : 0.06);
-    ctx.fillStyle = z >= 0 ? ZONE_COLORS[z % ZONE_COLORS.length] : '#555';
+    ctx.fillStyle = z >= 0 ? zoneColors[z % zoneColors.length] : '#555';
     ctx.beginPath();
     ctx.arc(sx, sy, isHover ? 4 : r, 0, Math.PI * 2);
     ctx.fill();
     
     // Locked DMAs get a ring
     if (z >= 0 && isDmaLocked(i)) {
-      ctx.strokeStyle = ZONE_COLORS[z % ZONE_COLORS.length];
+      ctx.strokeStyle = zoneColors[z % zoneColors.length];
       ctx.lineWidth = 0.8;
       ctx.globalAlpha = 0.5;
       ctx.beginPath();
@@ -865,7 +865,7 @@ function redrawMap() {
   for (const oa of oaMarkers) {
     const [sx, sy] = viewToScreen(oa.px, oa.py);
     const rOa = oa.isTbh ? 5 : 7;
-    ctx.fillStyle = ZONE_COLORS[oa.z % ZONE_COLORS.length];
+    ctx.fillStyle = zoneColors[oa.z % zoneColors.length];
     ctx.strokeStyle = '#fff';
     ctx.lineWidth = 2;
     ctx.beginPath();
@@ -950,7 +950,7 @@ function renderZoneCards() {
     const zMax = getTargetMax(z);
     const stats = zoneStats(z);
     const pct = Math.min(c / zMax * 100, 100);
-    const color = ZONE_COLORS[z % ZONE_COLORS.length];
+    const color = zoneColors[z % zoneColors.length];
     
     let status, statusClass;
     if (c > zMax) { status = `+${c - zMax} over`; statusClass = 'over'; }
@@ -1095,14 +1095,16 @@ function renderConstraintList() {
 
 function renderZoneThresholds() {
   const el = document.getElementById('zone-thresholds');
-  let html = '<p style="font-size:11px;color:#888;margin-bottom:6px">Per-zone max cap. Check "Strong" for OAs that can handle more stores (+bonus from global settings).</p>';
-  html += '<table style="width:100%;font-size:11px;border-collapse:collapse"><tr><th>Zone</th><th>Max</th><th>Strong</th></tr>';
+  let html = '<p style="font-size:11px;color:#888;margin-bottom:6px">Per-zone max cap. Check "Strong" for OAs that can handle more stores (+bonus from global settings). Click color swatch to change.</p>';
+  html += '<table style="width:100%;font-size:11px;border-collapse:collapse"><tr><th>Zone</th><th>Color</th><th>Max</th><th>Strong</th></tr>';
   for (let z = 0; z < NUM_ZONES; z++) {
     const isOA = z < OA_COUNT;
     const isStrong = isOA && STRONGER.includes(z);
     const curMax = getTargetMax(z);
+    const c = zoneColors[z % zoneColors.length];
     html += `<tr>
       <td style="padding:2px 4px;border-bottom:1px solid #333">${z+1}. ${zoneName(z).substring(0,22)}</td>
+      <td style="padding:2px 4px;border-bottom:1px solid #333"><input type="color" value="${c}" onchange="changeZoneColor(${z}, this.value)" style="width:28px;height:20px;padding:0;border:1px solid #555;border-radius:3px;background:0;cursor:pointer"></td>
       <td style="padding:2px 4px;border-bottom:1px solid #333">${curMax}</td>
       <td style="padding:2px 4px;border-bottom:1px solid #333">${isOA ? `<input type="checkbox" id="strong-${z}" ${isStrong ? 'checked' : ''} onchange="toggleStrong(${z})">` : '—'}</td>
     </tr>`;
@@ -1117,7 +1119,12 @@ function toggleStrong(z) {
     if (cb.checked) { if (!STRONGER.includes(z)) STRONGER.push(z); }
     else { STRONGER = STRONGER.filter(x => x !== z); }
   }
-  render(); // Refresh display
+  render();
+}
+
+function changeZoneColor(z, color) {
+  zoneColors[z % zoneColors.length] = color;
+  render();
 }
 
 // ===== ZONE DETAIL =====
@@ -1173,7 +1180,7 @@ function renderAreaDetail() {
   const zl = document.getElementById('area-zone-list');
   zl.innerHTML = Object.entries(zCounts).length
     ? Object.entries(zCounts).map(([z, c]) =>
-        `<span style="color:${ZONE_COLORS[z%ZONE_COLORS.length]}">Zone ${+z+1}: ${c}</span>`
+        `<span style="color:${zoneColors[z%zoneColors.length]}">Zone ${+z+1}: ${c}</span>`
       ).join(' &middot; ')
     : '<span style="color:#888">No assigned stores</span>';
   
@@ -1192,7 +1199,7 @@ function renderAreaDetail() {
     return `<div style="display:flex;align-items:center;gap:4px;padding:2px 4px;border-bottom:1px solid #2a2a3e">
       <span style="color:#666">#${STORES[si].id}</span>
       <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${STORES[si].dma}</span>
-      <span style="color:${ZONE_COLORS[z%ZONE_COLORS.length]}">${z+1}</span>
+      <span style="color:${zoneColors[z%zoneColors.length]}">${z+1}</span>
       ${locked ? '<span style="color:#4a8;font-size:8px">🔒</span>' : ''}
       <select onchange="moveStoreToZone(${si}, +this.value)" style="font-size:9px;padding:1px 3px;background:#2a2a3e;border:1px solid #555;border-radius:3px;color:#e0e0e0">
         ${Array.from({length: NUM_ZONES}, (_, i) =>
