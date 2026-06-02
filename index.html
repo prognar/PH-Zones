@@ -42,6 +42,8 @@ body{font-family:system-ui,-apple-system,sans-serif;background:#111;color:#e0e0e
 .zone-card .zbar{height:4px;border-radius:2px;background:#333;margin:4px 0;overflow:hidden}
 .zone-card .zbar-fill{height:100%;border-radius:2px;transition:width .3s}
 .zone-card .zsub{font-size:10px;color:#888;margin-top:2px}
+.zone-card .zsub input{background:#1a1a1a;border:1px solid #444;border-radius:2px;color:#ccc;font-size:9px;padding:1px 2px;width:auto;min-width:50px;text-align:center}
+.zone-card .zsub input:focus{outline:none;border-color:#4a9eff}
 .zone-card .zstatus{font-size:9px;padding:1px 5px;border-radius:3px;font-weight:600}
 .zs-over{background:#8b2020;color:#f88}
 .zs-under{background:#2a5a8b;color:#8cf}
@@ -110,7 +112,9 @@ body{font-family:system-ui,-apple-system,sans-serif;background:#111;color:#e0e0e
     </div>
     <button class="topbtn primary" onclick="runAutoAssign()">⚡ Auto Assign</button>
     <button class="topbtn" onclick="toggleConfig()">⚙ Config</button>
+    <button class="topbtn" onclick="document.getElementById('import-file').click()">⬆ Import</button>
     <button class="topbtn" onclick="exportCSV()">⬇ Export</button>
+    <input type="file" id="import-file" accept=".csv" style="display:none" onchange="importCSV(this)">
   </div>
   <div id="main">
     <div id="map-panel">
@@ -132,6 +136,18 @@ body{font-family:system-ui,-apple-system,sans-serif;background:#111;color:#e0e0e
           <button class="topbtn primary" onclick="moveAreaToZone()" style="padding:2px 8px;font-size:10px">Go</button>
         </div>
         <div id="area-store-list" style="max-height:180px;overflow-y:auto;font-size:10px;border-top:1px solid #333;padding-top:4px"></div>
+      </div>
+      <div id="split-area-panel" class="hidden" style="background:#1e1e30;border-radius:8px;margin-bottom:8px;padding:8px;font-size:11px">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+          <span style="font-weight:700;font-size:13px">Split Areas</span>
+          <span id="split-count" style="color:#888;font-size:10px">0</span>
+        </div>
+        <div style="display:flex;gap:4px;margin-bottom:4px">
+          <button class="topbtn" onclick="prevSplitArea()" style="padding:2px 6px;font-size:10px">◀</button>
+          <span id="split-nav" style="flex:1;text-align:center;font-size:10px;color:#aaa;padding:2px 0"></span>
+          <button class="topbtn" onclick="nextSplitArea()" style="padding:2px 6px;font-size:10px">▶</button>
+        </div>
+        <select id="split-area-select" size="6" style="width:100%;padding:2px;font-size:10px;background:#2a2a3e;border:1px solid #555;border-radius:3px;color:#e0e0e0" onchange="showSplitArea(this.value)"></select>
       </div>
       <div id="zone-grid"></div>
     </div>
@@ -203,6 +219,11 @@ body{font-family:system-ui,-apple-system,sans-serif;background:#111;color:#e0e0e
     </div>
 
     <div class="cfg-section">
+      <h3>Split Areas</h3>
+      <div id="area-split-list" style="max-height:200px;overflow-y:auto;font-size:10px"></div>
+    </div>
+
+    <div class="cfg-section">
       <h3>Move Suggestions</h3>
       <div class="cfg-row">
         <label>Suggest moves for</label>
@@ -243,6 +264,9 @@ const OAS = [
 ];
 const STRONGER_INIT = [3,4,5,8,1]; // zone indices (0-based): Danielle, AKM, Dustin, Derron, Hellen
 let STRONGER = [...STRONGER_INIT];
+let dmaLocksDisabled = new Set(); // OAs whose DMA lock has been turned off
+let splitAreas = []; // area names that are split across 2+ zones (array for indexed access)
+let currentSplitIdx = -1; // currently selected split area index
 const NUM_ZONES = 24; // 15 OA + 9 TBH
 const OA_COUNT = 15;
 const TBH_COUNT = 9;
@@ -285,6 +309,15 @@ function distToOA(si, oi) {
   if (oi < OA_COUNT) return haversine(s.lat, s.lon, oaLocs[oi].lat, oaLocs[oi].lon);
   const t = tbhLocs[oi - OA_COUNT];
   return haversine(s.lat, s.lon, t.lat, t.lon);
+}
+
+const DRIVE_CAP = 200; // 4 hours at 50 mph
+function isRemoteStore(si) {
+  const d = STORES[si].dma.toUpperCase();
+  return d.includes('HONOLULU') || d.includes('GUAM') || d.includes('FAIRBANKS') || d.includes('ANCHORAGE');
+}
+function withinCap(si, z) {
+  return isRemoteStore(si) || distToOA(si, z) <= DRIVE_CAP;
 }
 
 function nearestOA(si) {
@@ -381,12 +414,19 @@ function countUnassigned() {
 function lockOaDmas() {
   // Phase 1: Lock each OA's home DMA to that OA's zone
   for (let oz = 0; oz < OA_COUNT; oz++) {
+    if (dmaLocksDisabled.has(oz)) continue;
     const dma = oaDmas[oz];
     if (!dma || !dmaStores[dma]) continue;
     for (const si of dmaStores[dma]) {
       storeZone[si] = oz;
     }
   }
+}
+
+function toggleDmaLock(z) {
+  if (dmaLocksDisabled.has(z)) dmaLocksDisabled.delete(z);
+  else dmaLocksDisabled.add(z);
+  render();
 }
 
 function assignAreas() {
@@ -412,6 +452,11 @@ function assignAreas() {
     idx++;
     if (idx % 50 === 0) setProgress(30 + Math.round(idx / areaNames.length * 15), `Areas: ${idx}/${areaNames.length}`);
     
+    // Compute area centroid
+    let cLat = 0, cLon = 0;
+    for (const si of sis) { cLat += STORES[si].lat; cLon += STORES[si].lon; }
+    cLat /= sis.length; cLon /= sis.length;
+    
     // Count nearest zone for each store in this area
     const zoneVotes = {};
     for (const si of sis) {
@@ -423,36 +468,61 @@ function assignAreas() {
       .map(([z, c]) => ({zone: parseInt(z), count: c}))
       .sort((a, b) => b.count - a.count);
     
-    // Among nearest zones, pick the one that needs stores most (below target),
-    // then assign the entire area to that single zone (never split areas)
-    const tz = pickBestZone(sortedZones, 1)[0];
+    // Among nearest zones, pick one respecting "5 stores in between" rule and drive cap
+    const tz = pickBestZone(sortedZones, 1, cLat, cLon, sis.length)[0];
     for (const si of sis) storeZone[si] = tz;
   }
   
   // Helper: among nearest zones, pick the zone(s) most in need of stores
-  function pickBestZone(sortedZones, maxZones) {
+  function pickBestZone(sortedZones, maxZones, cLat, cLon, totalStores) {
     const counts = zoneCounts();
-    const top = sortedZones.slice(0, Math.max(maxZones, Math.min(3, sortedZones.length)));
-    // Sort by need (most under target first), break ties by vote count
-    top.sort((a, b) => {
-      const aCount = counts[a.zone], bCount = counts[b.zone];
-      const aNeed = getTargetMin(a.zone) - aCount;
-      const bNeed = getTargetMin(b.zone) - bCount;
-      if (aNeed > 0 && bNeed <= 0) return -1;
-      if (bNeed > 0 && aNeed <= 0) return 1;
-      if (aNeed > 0 && bNeed > 0) return bNeed - aNeed;
-      return b.count - a.count;
-    });
-    return top.slice(0, maxZones).map(x => x.zone);
+    // Consider ALL zones with at least 1 vote
+    const allWithDist = sortedZones.map(t => ({
+      zone: t.zone, count: t.count,
+      dist: t.zone < OA_COUNT
+        ? haversine(cLat, cLon, oaLocs[t.zone].lat, oaLocs[t.zone].lon)
+        : haversine(cLat, cLon, tbhLocs[t.zone - OA_COUNT].lat, tbhLocs[t.zone - OA_COUNT].lon)
+    }));
+    // Separate zones that respect the crossover rule from those that don't
+    // At most max(1, 25% of area, capped at 5) stores may prefer a different zone
+    const crossoverLimit = Math.max(1, Math.min(5, Math.floor(totalStores * 0.25)));
+    const pass = allWithDist.filter(t => totalStores - t.count <= crossoverLimit);
+    const fail = allWithDist.filter(t => totalStores - t.count > crossoverLimit);
+    // Sort pass by need with distance penalty; sort fail with stronger penalty
+    const sortByNeed = (arr, penaltyMult) => {
+      const m = Math.min(...arr.map(t => t.dist)) || 1;
+      arr.sort((a, b) => {
+        const aCnt = counts[a.zone], bCnt = counts[b.zone];
+        const aNeed = getTargetMin(a.zone) - aCnt;
+        const bNeed = getTargetMin(b.zone) - bCnt;
+        const aScore = aNeed - (a.dist / m - 1) * penaltyMult;
+        const bScore = bNeed - (b.dist / m - 1) * penaltyMult;
+        if (aScore > 0 && bScore <= 0) return -1;
+        if (bScore > 0 && aScore <= 0) return 1;
+        if (aScore > 0 && bScore > 0) return bScore - aScore || b.count - a.count;
+        return b.count - a.count;
+      });
+    };
+    // Pass gets distance penalty 20; fail gets 80 (quadruple penalty)
+    sortByNeed(pass, 20);
+    sortByNeed(fail, 80);
+    const ranked = pass.concat(fail);
+    return ranked.slice(0, maxZones).map(x => x.zone);
   }
   
-  // Phase 2b: Assign any remaining unassigned stores to nearest OA
+  // Phase 2b: Assign any remaining unassigned stores to nearest OA within drive cap
   let remaining = 0;
   for (let i = 0; i < STORES.length; i++) {
     if (storeZone[i] >= 0) continue;
     remaining++;
-    const n = nearestOA(i);
-    storeZone[i] = n.zone;
+    // Find nearest zone that respects drive cap
+    let best = -1, bestD = Infinity;
+    for (let z = 0; z < NUM_ZONES; z++) {
+      if (!withinCap(i, z)) continue;
+      const d = distToOA(i, z);
+      if (d < bestD) { bestD = d; best = z; }
+    }
+    storeZone[i] = best >= 0 ? best : nearestOA(i).zone; // fallback to absolute nearest
   }
   if (remaining > 0) console.log(`Phase 2b: assigned ${remaining} individual remaining stores`);
 }
@@ -491,12 +561,12 @@ function balanceZones() {
         const candidates = [];
         for (let i = 0; i < STORES.length; i++) {
           if (storeZone[i] !== oz) continue;
-          // Never move locked DMA stores
           if (oz < OA_COUNT && oaDmas[oz] && STORES[i].dma === oaDmas[oz]) continue;
           
           let bestU = -1, bestD = Infinity;
           for (const uz of under) {
             if (counts[uz] >= getTargetMax(uz)) continue;
+            if (!withinCap(i, uz)) continue;
             const d = distToOA(i, uz);
             if (d < bestD) { bestD = d; bestU = uz; }
           }
@@ -515,17 +585,16 @@ function balanceZones() {
       }
     }
     
-    // Phase B: Move from above-mean donors to under-capacity zones,
-    // prioritizing geographically close stores (minimize drive time impact)
+    // Phase B: Move from above-mean donors to under-capacity zones
     const counts2 = zoneCounts();
     const under2 = [];
     for (let z = 0; z < NUM_ZONES; z++) if (counts2[z] < tMin) under2.push(z);
     if (under2.length === 0) break;
     
-    // Collect all movable stores from donor zones (above mean)
+    // Any zone above the mean can donate
     const donors = [];
     for (let z = 0; z < NUM_ZONES; z++) {
-      if (counts2[z] > mean + 5) donors.push(z);
+      if (counts2[z] > mean) donors.push(z);
     }
     if (donors.length === 0) break;
     
@@ -533,13 +602,13 @@ function balanceZones() {
       const needed = tMin - counts2[uz];
       if (needed <= 0) continue;
       
-      // Gather candidates from ALL donors, sorted by distance to target zone
       const allCandidates = [];
       for (const dz of donors) {
         if (counts2[dz] <= Math.floor(mean)) continue;
         for (let i = 0; i < STORES.length; i++) {
           if (storeZone[i] !== dz) continue;
           if (dz < OA_COUNT && oaDmas[dz] && STORES[i].dma === oaDmas[dz]) continue;
+          if (!withinCap(i, uz)) continue;
           const d = distToOA(i, uz);
           allCandidates.push({idx: i, fromZone: dz, dist: d});
         }
@@ -558,6 +627,139 @@ function balanceZones() {
         moved++;
       }
     }
+  }
+  
+  // Phase C: Force-fill any zone still below 150 (tiered to minimize crossover)
+  const final = zoneCounts();
+  const stillUnder = [];
+  for (let z = 0; z < NUM_ZONES; z++) if (final[z] < tMin) stillUnder.push(z);
+  if (stillUnder.length > 0) {
+    const meanFloor = Math.floor(STORES.length / NUM_ZONES);
+    for (const uz of stillUnder) {
+      let needed = tMin - final[uz];
+      if (needed <= 0) continue;
+      // Helper: gather candidates with optional filters
+      const gather = (capOnly, nearestOnly) => {
+        const c = [];
+        for (let i = 0; i < STORES.length; i++) {
+          if (storeZone[i] < 0) continue;
+          if (storeZone[i] === uz) continue;
+          const dz = storeZone[i];
+          if (dz < OA_COUNT && oaDmas[dz] && STORES[i].dma === oaDmas[dz]) continue;
+          if (final[dz] <= meanFloor) continue;
+          if (capOnly && !withinCap(i, uz)) continue;
+          if (nearestOnly && nearestOA(i).zone !== uz) continue;
+          c.push({idx: i, fromZone: dz, dist: distToOA(i, uz)});
+        }
+        c.sort((a, b) => a.dist - b.dist);
+        return c;
+      };
+      // Tier 1: within cap AND nearest zone is target
+      let candidates = gather(true, true);
+      // Tier 2: within cap (any nearest zone)
+      if (candidates.length < needed) {
+        const more = gather(true, false);
+        // Add new candidates not already in tier 1
+        const seen = new Set(candidates.map(x => x.idx));
+        for (const m of more) if (!seen.has(m.idx)) candidates.push(m);
+      }
+      // Tier 3: ignore cap entirely (original behavior)
+      if (candidates.length < needed) {
+        const more = gather(false, false);
+        const seen = new Set(candidates.map(x => x.idx));
+        for (const m of more) if (!seen.has(m.idx)) candidates.push(m);
+      }
+      let moved = 0;
+      for (const cand of candidates) {
+        if (moved >= needed) break;
+        const dz = cand.fromZone;
+        if (final[dz] <= meanFloor) continue;
+        if (wouldSplitArea(cand.idx, uz)) continue;
+        storeZone[cand.idx] = uz;
+        final[uz]++;
+        final[dz]--;
+        moved++;
+      }
+    }
+    const still = zoneCounts().filter(c => c < tMin).length;
+    if (still > 0) console.warn(`${still} zones still below ${tMin} stores after force-fill`);
+  }
+
+  // Phase D: Crossover correction — move stores assigned to a non-nearest zone back
+  const dCounts = zoneCounts();
+  const dTargetMax = getTargetMax();
+  // Build list of stores that are in the wrong zone
+  const crossed = [];
+  for (let i = 0; i < STORES.length; i++) {
+    if (storeZone[i] < 0) continue;
+    const cz = storeZone[i];
+    const nn = nearestOA(i);
+    if (nn.zone === cz) continue;
+    if (cz < OA_COUNT && oaDmas[cz] && STORES[i].dma === oaDmas[cz]) continue;
+    if (dCounts[nn.zone] >= dTargetMax) continue;
+    if (!withinCap(i, nn.zone)) continue;
+    const curDist = distToOA(i, cz);
+    crossed.push({idx: i, curZone: cz, bestZone: nn.zone, savings: curDist - nn.dist});
+  }
+  crossed.sort((a, b) => b.savings - a.savings);
+  for (const x of crossed) {
+    if (dCounts[x.bestZone] >= dTargetMax) continue;
+    if (dCounts[x.curZone] <= tMin) continue;
+    if (wouldSplitArea(x.idx, x.bestZone)) continue;
+    storeZone[x.idx] = x.bestZone;
+    dCounts[x.bestZone]++;
+    dCounts[x.curZone]--;
+  }
+  if (crossed.length > 0) console.log(`Phase D: corrected ${crossed.length} crossover stores`);
+
+  // Phase E: Over-capacity reduction — bring zones > 250 down
+  const eCounts = zoneCounts();
+  const OVER_MAX = 250;
+  for (let z = 0; z < NUM_ZONES; z++) {
+    if (eCounts[z] <= OVER_MAX) continue;
+    const excess = Math.min(eCounts[z] - OVER_MAX, eCounts[z] - Math.floor(STORES.length / NUM_ZONES));
+    if (excess <= 0) continue;
+    const candidates = [];
+    for (let i = 0; i < STORES.length; i++) {
+      if (storeZone[i] !== z) continue;
+      if (z < OA_COUNT && oaDmas[z] && STORES[i].dma === oaDmas[z]) continue;
+      const curDist = distToOA(i, z);
+      // Skip stores very close to the OA (they should stay)
+      if (curDist < 30) continue;
+      const nn = nearestOA(i);
+      let bestAlt = -1, bestAltD = Infinity;
+      if (nn.zone !== z && eCounts[nn.zone] < dTargetMax && withinCap(i, nn.zone)) {
+        bestAlt = nn.zone;
+        bestAltD = nn.dist;
+      } else {
+        // Search all zones for the best alternative
+        for (let az = 0; az < NUM_ZONES; az++) {
+          if (az === z) continue;
+          if (eCounts[az] >= dTargetMax) continue;
+          if (!withinCap(i, az)) continue;
+          const d = distToOA(i, az);
+          if (d < bestAltD) { bestAltD = d; bestAlt = az; }
+        }
+      }
+      if (bestAlt < 0) continue;
+      // Accept if alternative is not unreasonably farther
+      // (within 50% more distance, or if current OA is beyond cap)
+      if (bestAltD > curDist * 1.5 && curDist < DRIVE_CAP) continue;
+      candidates.push({idx: i, toZone: bestAlt, curDist: curDist, altDist: bestAltD});
+    }
+    // Sort by largest distance from current OA first (farthest stores leave first)
+    candidates.sort((a, b) => b.curDist - a.curDist);
+    let moved = 0;
+    for (const c of candidates) {
+      if (moved >= excess) break;
+      if (eCounts[c.toZone] >= dTargetMax) continue;
+      if (wouldSplitArea(c.idx, c.toZone)) continue;
+      storeZone[c.idx] = c.toZone;
+      eCounts[z]--;
+      eCounts[c.toZone]++;
+      moved++;
+    }
+    if (moved > 0) console.log(`Phase E: moved ${moved} stores out of Zone ${zoneName(z)} (${eCounts[z]} remaining)`);
   }
 }
 
@@ -642,6 +844,7 @@ let storePts = []; // projected store coords [x,y]
 let tx = 0, ty = 0, sc = 1;
 let hoverIdx = -1; // store index under mouse
 let oaMarkers = []; // {name, lat, lon, z, isTbh}
+let dragOA = null; // OA being dragged {z, isTbh}
 
 function viewToScreen(x, y) { return [x * sc + tx, y * sc + ty]; }
 function screenToView(sx, sy) { return [(sx - tx) / sc, (sy - ty) / sc]; }
@@ -666,11 +869,12 @@ function initMap() {
     const mx = e.clientX - rect.left, my = e.clientY - rect.top;
     const [vx, vy] = screenToView(mx, my);
     
-    // Check OA marker clicks
+    // Check OA marker clicks — drag to move
     for (const oa of oaMarkers) {
       const [sx, sy] = viewToScreen(oa.px, oa.py);
-      if (Math.hypot(mx - sx, my - sy) < 10) {
-        showZoneDetail(oa.z);
+      if (Math.hypot(mx - sx, my - sy) < 12) {
+        dragOA = oa;
+        panStart = null;
         return;
       }
     }
@@ -691,12 +895,24 @@ function initMap() {
     if (e.button === 0) panStart = {x: e.clientX, y: e.clientY, tx, ty};
   });
   mapCanvas.addEventListener('mousemove', (e) => {
-    if (panStart) {
+    if (dragOA) {
+      const rect = mapCanvas.getBoundingClientRect();
+      const [vx, vy] = screenToView(e.clientX - rect.left, e.clientY - rect.top);
+      const ll = projection.invert([vx, vy]);
+      if (ll) {
+        const [lon, lat] = ll;
+        if (dragOA.isTbh) { tbhLocs[dragOA.z - OA_COUNT].lat = lat; tbhLocs[dragOA.z - OA_COUNT].lon = lon; }
+        else { oaLocs[dragOA.z].lat = lat; oaLocs[dragOA.z].lon = lon; }
+        rebuildMarkers();
+        redrawMap();
+        renderZoneCards();
+      }
+    } else if (panStart) {
       tx = panStart.tx + (e.clientX - panStart.x);
       ty = panStart.ty + (e.clientY - panStart.y);
       redrawMap();
     } else {
-      // Hit test for tooltip
+      // Tooltip and OA marker checks
       const rect = mapCanvas.getBoundingClientRect();
       const mx = e.clientX - rect.left, my = e.clientY - rect.top;
       const [vx, vy] = screenToView(mx, my);
@@ -704,11 +920,10 @@ function initMap() {
       if (hoverIdx >= 0) {
         const st = STORES[hoverIdx]; const zz = storeZone[hoverIdx];
         const locked = isDmaLocked(hoverIdx) ? ' 🔒' : '';
-        showTooltip(e, `#${st.id} | ${st.dma} | ${st.area}<br>Zone: ${zz >= 0 ? (zz+1)+' - '+zoneName(zz) : 'Unassigned'}${locked} | ${st.rating.toFixed(2)}★`);
+        showTooltip(e, `#${st.id} | ${st.dma} | ${st.area}${st.franchisee ? ' | '+st.franchisee : ''}<br>Zone: ${zz >= 0 ? (zz+1)+' - '+zoneName(zz) : 'Unassigned'}${locked}`);
       } else {
         hideTooltip();
       }
-      // Check OA markers
       for (const oa of oaMarkers) {
         const [sx, sy] = viewToScreen(oa.px, oa.py);
         const d = Math.hypot(mx - sx, my - sy);
@@ -719,8 +934,8 @@ function initMap() {
       }
     }
   });
-  mapCanvas.addEventListener('mouseup', () => { panStart = null; });
-  mapCanvas.addEventListener('mouseleave', () => { panStart = null; hideTooltip(); });
+  mapCanvas.addEventListener('mouseup', () => { panStart = null; dragOA = null; });
+  mapCanvas.addEventListener('mouseleave', () => { panStart = null; dragOA = null; hideTooltip(); });
   mapCanvas.addEventListener('wheel', (e) => {
     e.preventDefault();
     const rect = mapCanvas.getBoundingClientRect();
@@ -760,7 +975,19 @@ function projectStores() {
     const p = projection([s.lon, s.lat]);
     return p ? {x: p[0], y: p[1]} : null;
   });
-  // Build OA marker data
+  rebuildMarkers();
+}
+
+function updateCentroid(z, field, val) {
+  const v = parseFloat(val);
+  if (isNaN(v)) return;
+  if (z < OA_COUNT) { oaLocs[z][field] = v; }
+  else { tbhLocs[z - OA_COUNT][field] = v; }
+  rebuildMarkers();
+  if (mapCtx) redrawMap();
+}
+
+function rebuildMarkers() {
   oaMarkers = [];
   for (let z = 0; z < NUM_ZONES; z++) {
     let lat, lon, name, isTbh = z >= OA_COUNT;
@@ -843,20 +1070,15 @@ function redrawMap() {
     const inAreaFilter = !filterArea || STORES[i].area === filterArea;
     const show = inFilter && inAreaFilter;
     ctx.globalAlpha = isHover ? 1 : (show ? 0.7 : 0.06);
+    // Light outline so dark dots are visible against dark background
+    ctx.strokeStyle = 'rgba(255,255,255,0.5)';
+    ctx.lineWidth = 0.5;
     ctx.fillStyle = z >= 0 ? zoneColors[z % zoneColors.length] : '#555';
     ctx.beginPath();
     ctx.arc(sx, sy, isHover ? 4 : r, 0, Math.PI * 2);
     ctx.fill();
+    ctx.stroke();
     
-    // Locked DMAs get a ring
-    if (z >= 0 && isDmaLocked(i)) {
-      ctx.strokeStyle = zoneColors[z % zoneColors.length];
-      ctx.lineWidth = 0.8;
-      ctx.globalAlpha = 0.5;
-      ctx.beginPath();
-      ctx.arc(sx, sy, r + 2, 0, Math.PI * 2);
-      ctx.stroke();
-    }
   }
   
   ctx.globalAlpha = 1;
@@ -924,19 +1146,19 @@ function render() {
   renderZoneCards();
   if (mapCtx) redrawMap();
   renderConstraintList();
+  renderAreaSplits();
   renderTBHTable();
   populateSGFilter();
 }
 
 function zoneStats(z) {
-  let total = 0, sumRating = 0, sumDrive = 0, count = 0;
+  let sumDrive = 0, count = 0;
   for (let i = 0; i < STORES.length; i++) {
     if (storeZone[i] !== z) continue;
     count++;
-    sumRating += STORES[i].rating;
     sumDrive += distToOA(i, z);
   }
-  return {count, avgRating: count ? sumRating/count : 0, avgDrive: count ? sumDrive/count : 0};
+  return {count, avgDrive: count ? sumDrive/count : 0};
 }
 
 function renderZoneCards() {
@@ -960,13 +1182,17 @@ function renderZoneCards() {
     
     const avgDriveMin = Math.round(stats.avgDrive / 50 * 10) / 10; // drive time = dist/50 mph
     
+    const loc = z < OA_COUNT ? oaLocs[z] : tbhLocs[z - OA_COUNT];
+    const lockOn = z < OA_COUNT && oaDmas[z] && !dmaLocksDisabled.has(z);
     html += `<div class="zone-card" onclick="showZoneDetail(${z})" style="border-left:3px solid ${color}">
       <div class="zhdr">
         <span class="zname">${z+1}. ${zoneName(z)}</span>
+        ${z < OA_COUNT ? `<span class="zlock" onclick="event.stopPropagation();toggleDmaLock(${z})" style="cursor:pointer;font-size:10px;margin-left:2px">${lockOn ? '🔒' : '🔓'}</span>` : ''}
         <span class="zcount">${c}</span>
       </div>
       <div class="zbar"><div class="zbar-fill" style="width:${pct}%;background:${color}"></div></div>
-      <div class="zsub">Target: ${tMin}-${zMax} | Avg drive: ~${avgDriveMin}h | Rating: ${stats.avgRating.toFixed(2)}</div>
+      <div class="zsub">Target: ${tMin}-${zMax} | Avg drive: ~${avgDriveMin}h</div>
+      <div class="zsub"><input class="zlat" value="${loc.lat.toFixed(4)}" size="7" onclick="event.stopPropagation()" onchange="updateCentroid(${z},'lat',this.value)"> <input class="zlon" value="${loc.lon.toFixed(4)}" size="7" onclick="event.stopPropagation()" onchange="updateCentroid(${z},'lon',this.value)"></div>
       <span class="zstatus zs-${statusClass}">${status}</span>
       ${z >= OA_COUNT ? '<span class="zhint">TBH</span>' : ''}
     </div>`;
@@ -1093,6 +1319,106 @@ function renderConstraintList() {
   el.innerHTML = html;
 }
 
+function renderAreaSplits() {
+  const el = document.getElementById('area-split-list');
+  if (storeZone.length === 0) { el.innerHTML = '<div style="color:#888;font-size:11px">Run Auto-Assign to see split areas</div>'; return; }
+
+  // Group stores by area, track which zones each area appears in
+  const areaMap = {};
+  for (let i = 0; i < STORES.length; i++) {
+    if (storeZone[i] < 0) continue;
+    const a = STORES[i].area;
+    if (!areaMap[a]) areaMap[a] = {zones: {}, total: 0};
+    areaMap[a].zones[storeZone[i]] = (areaMap[a].zones[storeZone[i]] || 0) + 1;
+    areaMap[a].total++;
+  }
+
+  // Collect areas with more than 1 zone
+  const splits = Object.entries(areaMap)
+    .filter(([, info]) => Object.keys(info.zones).length > 1)
+    .sort((a, b) => {
+      const aCnt = Object.keys(a[1].zones).length;
+      const bCnt = Object.keys(b[1].zones).length;
+      return bCnt - aCnt || b[1].total - a[1].total;
+    });
+
+  // Update global splitAreas array for navigator and map highlighting
+  splitAreas = splits.map(([area]) => area);
+  if (currentSplitIdx >= splitAreas.length) currentSplitIdx = splitAreas.length - 1;
+
+  // Populate the split area navigator panel
+  const navPanel = document.getElementById('split-area-panel');
+  const select = document.getElementById('split-area-select');
+  const countEl = document.getElementById('split-count');
+  const navEl = document.getElementById('split-nav');
+  if (splits.length === 0) {
+    navPanel.classList.add('hidden');
+  } else {
+    navPanel.classList.remove('hidden');
+    countEl.textContent = `${splits.length} area${splits.length > 1 ? 's' : ''}`;
+    select.innerHTML = splits.map(([area, info], i) => {
+      const zoneEntries = Object.entries(info.zones).sort((a, b) => b[1] - a[1]);
+      const desc = zoneEntries.map(([z, cnt]) => `${cnt} in Z${+z+1}`).join(', ');
+      return `<option value="${i}">${area} (${info.total}): ${desc}</option>`;
+    }).join('');
+    if (currentSplitIdx >= 0 && currentSplitIdx < splits.length) {
+      select.value = currentSplitIdx;
+      navEl.textContent = `${currentSplitIdx + 1} of ${splits.length}`;
+    } else {
+      navEl.textContent = `0 of ${splits.length}`;
+    }
+  }
+
+  let html = `<div style="font-weight:600;font-size:11px;margin-bottom:4px">Split Areas (${splits.length}):</div>`;
+  if (splits.length === 0) {
+    html += '<div style="color:#888;font-size:11px">No areas are split across multiple zones ✓</div>';
+  } else {
+    for (const [area, info] of splits.slice(0, 100)) {
+      const zoneEntries = Object.entries(info.zones).sort((a, b) => b[1] - a[1]);
+      const zoneList = zoneEntries.map(([z, cnt]) => `${cnt} in Z${+z+1}`).join(', ');
+      const hint = zoneEntries.some(([z]) => zoneEntries.some(([z2]) => +z2 !== +z && isDmaLockedByAreaStore(area, +z) !== isDmaLockedByAreaStore(area, +z2)))
+        ? ' ⚠️ DMA conflict' : '';
+      html += `<div class="constraint-row partial" onclick="showAreaDetail('${area.replace(/'/g, "\\'")}')">
+        ${area} (${info.total}): ${zoneList}${hint}
+      </div>`;
+    }
+  }
+  el.innerHTML = html;
+}
+
+function isDmaLockedByAreaStore(area, z) {
+  for (let i = 0; i < STORES.length; i++) {
+    if (STORES[i].area === area && storeZone[i] >= 0 && storeZone[i] === z) {
+      if (isDmaLocked(i)) return true;
+    }
+  }
+  return false;
+}
+
+function showSplitArea(idx) {
+  idx = parseInt(idx);
+  if (idx < 0 || idx >= splitAreas.length) return;
+  currentSplitIdx = idx;
+  const area = splitAreas[idx];
+  showAreaDetail(area);
+  const el = document.getElementById('split-nav');
+  if (el) el.textContent = `${idx + 1} of ${splitAreas.length}`;
+  const sel = document.getElementById('split-area-select');
+  if (sel) sel.value = idx;
+}
+
+function nextSplitArea() {
+  if (splitAreas.length === 0) return;
+  const idx = currentSplitIdx < 0 ? 0 : (currentSplitIdx + 1) % splitAreas.length;
+  showSplitArea(idx);
+}
+
+function prevSplitArea() {
+  if (splitAreas.length === 0) return;
+  const idx = currentSplitIdx <= 0 ? splitAreas.length - 1 : currentSplitIdx - 1;
+  showSplitArea(idx);
+}
+
 function renderZoneThresholds() {
   const el = document.getElementById('zone-thresholds');
   let html = '<p style="font-size:11px;color:#888;margin-bottom:6px">Per-zone max cap. Check "Strong" for OAs that can handle more stores (+bonus from global settings). Click color swatch to change.</p>';
@@ -1152,6 +1478,15 @@ function showAreaDetail(area) {
   filterZone = -1; filterArea = area;
   if (mapCtx) redrawMap();
   renderAreaDetail();
+  // Sync navigator if this is a split area
+  const idx = splitAreas.indexOf(area);
+  if (idx >= 0) {
+    currentSplitIdx = idx;
+    const navEl = document.getElementById('split-nav');
+    if (navEl) navEl.textContent = `${idx + 1} of ${splitAreas.length}`;
+    const sel = document.getElementById('split-area-select');
+    if (sel) sel.value = idx;
+  }
 }
 
 function clearAreaDetail() {
@@ -1211,7 +1546,6 @@ function renderAreaDetail() {
 }
 
 function moveStoreToZone(si, toZone) {
-  if (isDmaLocked(si)) { toast('⛔ Cannot move store from OA-locked DMA'); renderAreaDetail(); return; }
   const from = storeZone[si];
   storeZone[si] = toZone;
   renderAreaDetail();
@@ -1226,14 +1560,12 @@ function moveAreaToZone() {
   for (let i = 0; i < STORES.length; i++) {
     if (STORES[i].area !== currentArea) continue;
     if (storeZone[i] < 0) continue;
-    if (isDmaLocked(i)) { blocked++; continue; }
     storeZone[i] = toZone;
     moved++;
   }
   renderAreaDetail();
   render();
-  if (blocked) toast(`Moved ${moved} stores to ${zoneName(toZone)} (${blocked} locked, skipped)`);
-  else toast(`Moved ${moved} stores to ${zoneName(toZone)}`);
+  toast(`Moved ${moved} stores to ${zoneName(toZone)}`);
 }
 
 // ===== SUGGESTIONS =====
@@ -1251,7 +1583,7 @@ function isDmaLocked(storeIdx) {
   if (!oaDmas || oaDmas.length === 0) return false;
   const dma = STORES[storeIdx].dma;
   for (let oz = 0; oz < OA_COUNT; oz++) {
-    if (oaDmas[oz] === dma) return true;
+    if (oaDmas[oz] === dma && !dmaLocksDisabled.has(oz)) return true;
   }
   return false;
 }
@@ -1277,9 +1609,6 @@ function generateSuggestions() {
     const candidates = [];
     for (let i = 0; i < STORES.length; i++) {
       if (storeZone[i] !== oz) continue;
-      // GUARDRAIL: Never suggest moving stores out of OA-locked DMAs
-      if (isDmaLocked(i)) continue;
-      
       let bestU = -1, bestD = Infinity;
       for (const uz of underZones) {
         const d = distToOA(i, uz);
@@ -1317,11 +1646,6 @@ function clearAllAssignments() {
 }
 
 function applySuggestion(si, toZone) {
-  // GUARDRAIL: Block moves from locked OA DMAs
-  if (isDmaLocked(si)) {
-    toast('⛔ Cannot move store from OA-locked DMA (guardrail)');
-    return;
-  }
   // GUARDRAIL: Check area integrity (if area would be split across 3+ zones)
   if (document.getElementById('cfg-keep-areas').checked) {
     const area = STORES[si].area;
@@ -1342,12 +1666,48 @@ function applySuggestion(si, toZone) {
 }
 
 // ===== EXPORT =====
+function importCSV(input) {
+  const file = input.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    const text = e.target.result;
+    const lines = text.split('\n').map(l => l.trim()).filter(l => l);
+    if (lines.length < 2) { toast('⛔ CSV is empty'); return; }
+    const headers = lines[0].split(',').map(h => h.trim().toUpperCase());
+    const idCol = headers.indexOf('STORE_ID');
+    const zoneCol = headers.indexOf('ZONE');
+    if (idCol < 0 || zoneCol < 0) { toast('⛔ CSV must have STORE_ID and ZONE columns'); return; }
+    // Build store ID lookup
+    const idMap = {};
+    for (let i = 0; i < STORES.length; i++) idMap[STORES[i].id] = i;
+    let assigned = 0, errors = 0;
+    for (let r = 1; r < lines.length; r++) {
+      const cols = lines[r].split(',');
+      const sid = cols[idCol] ? cols[idCol].trim() : '';
+      const zVal = cols[zoneCol] ? cols[zoneCol].trim() : '';
+      if (!sid || !zVal) continue;
+      const si = idMap[sid];
+      if (si === undefined) { errors++; continue; }
+      const z = parseInt(zVal) - 1;
+      if (isNaN(z) || z < 0 || z >= NUM_ZONES) { errors++; continue; }
+      storeZone[si] = z;
+      assigned++;
+    }
+    render();
+    const msg = `Imported ${assigned} stores from CSV${errors ? ` (${errors} errors)` : ''}`;
+    toast(msg);
+  };
+  reader.readAsText(file);
+  input.value = '';
+}
+
 function exportCSV() {
-  let csv = 'STORE_ID,ZONE,ZONE_NAME,AREA,DMA,LAT,LON,RATING\n';
+  let csv = 'STORE_ID,ZONE,ZONE_NAME,AREA,DMA,LAT,LON,FRANCHISEE\n';
   for (let i = 0; i < STORES.length; i++) {
     const s = STORES[i];
     const z = storeZone[i];
-    csv += `${s.id},${z >= 0 ? z+1 : ''},${z >= 0 ? zoneName(z) : ''},${s.area},${s.dma},${s.lat},${s.lon},${s.rating}\n`;
+    csv += `${s.id},${z >= 0 ? z+1 : ''},${z >= 0 ? zoneName(z) : ''},${s.area},${s.dma},${s.lat},${s.lon},${s.franchisee || ''}\n`;
   }
   const blob = new Blob([csv], {type: 'text/csv'});
   const url = URL.createObjectURL(blob);
