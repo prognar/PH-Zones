@@ -110,6 +110,12 @@ body{font-family:system-ui,-apple-system,sans-serif;background:#111;color:#e0e0e
       <span class="st">σ: <b id="sigma-display">—</b></span>
       <span class="st"><span id="over-under"></span></span>
     </div>
+    <label class="top-toggle" style="font-size:11px;cursor:pointer;display:flex;align-items:center;gap:3px;color:#aaa">
+      <input type="checkbox" id="toggle-dots" checked onchange="redrawMap()"> Dots
+    </label>
+    <label class="top-toggle" style="font-size:11px;cursor:pointer;display:flex;align-items:center;gap:3px;color:#aaa">
+      <input type="checkbox" id="toggle-zones" onchange="redrawMap()"> Zones
+    </label>
     <button class="topbtn primary" onclick="runAutoAssign()">⚡ Auto Assign</button>
     <button class="topbtn" onclick="toggleConfig()">⚙ Config</button>
     <button class="topbtn" onclick="document.getElementById('import-file').click()">⬆ Import</button>
@@ -1054,31 +1060,91 @@ function redrawMap() {
   // Clear canvas to transparent so SVG state outlines show through
   ctx.clearRect(0, 0, mapW, mapH);
   
-  // Draw stores
-  const counts = zoneCounts();
-  const r = 2;
+  const showDots = document.getElementById('toggle-dots')?.checked !== false;
+  const showZonesOverlay = document.getElementById('toggle-zones')?.checked === true;
   
-  for (let i = 0; i < STORES.length; i++) {
-    const pt = storePts[i];
-    if (!pt) continue;
-    const [sx, sy] = viewToScreen(pt.x, pt.y);
-    if (sx < -r || sx > mapW + r || sy < -r || sy > mapH + r) continue;
+  // Zone territory overlay (per-store Voronoi — every pixel colored by nearest store's zone)
+  if (showZonesOverlay) {
+    const sp = [];
+    const sz = [];
+    for (let i = 0; i < STORES.length; i++) {
+      const pt = storePts[i];
+      if (!pt) continue;
+      const z = storeZone[i];
+      if (z < 0) continue;
+      sp.push(viewToScreen(pt.x, pt.y));
+      sz.push(z);
+    }
+    if (sp.length >= 3) {
+      ctx.save();
+      if (usTopoData) {
+        const k = sc, tx2 = tx, ty2 = ty;
+        const proj = d3.geoAlbersUsa()
+          .scale(mapW * 1.25 * k)
+          .translate([mapW / 2 * k + tx2, mapH / 2 * k + ty2]);
+        const pg = d3.geoPath(proj);
+        const allStates = topojson.feature(usTopoData, usTopoData.objects.states);
+        const lower48 = { type: 'FeatureCollection', features: allStates.features.filter(f => f.id !== '02' && f.id !== '15') };
+        ctx.clip(new Path2D(pg(lower48)));
+      }
+      const delaunay = d3.Delaunay.from(sp);
+      // Render zone map at reduced resolution, then scale up
+      const G = 5;
+      const cols = Math.ceil(mapW / G);
+      const rows = Math.ceil(mapH / G);
+      const tmp = document.createElement('canvas');
+      tmp.width = cols; tmp.height = rows;
+      const tc = tmp.getContext('2d');
+      const grid = new Uint8Array(cols * rows);
+      const used = new Set();
+      for (let r = 0; r < rows; r++) {
+        for (let c = 0; c < cols; c++) {
+          const v = sz[delaunay.find(c * G + G / 2, r * G + G / 2)];
+          grid[r * cols + c] = v;
+          used.add(v);
+        }
+      }
+      for (const z of used) {
+        tc.fillStyle = zoneColors[z % zoneColors.length];
+        tc.beginPath();
+        for (let i = 0; i < grid.length; i++) {
+          if (grid[i] === z) tc.rect(i % cols, Math.floor(i / cols), 1, 1);
+        }
+        tc.fill();
+      }
+      ctx.globalAlpha = 0.12;
+      ctx.drawImage(tmp, 0, 0, mapW, mapH);
+      ctx.restore();
+    }
+    ctx.globalAlpha = 1;
+  }
+  
+  // Draw stores
+  if (showDots) {
+    const counts = zoneCounts();
+    const r = 2;
     
-    const z = storeZone[i];
-    const isHover = i === hoverIdx;
-    const inFilter = filterZone < 0 || storeZone[i] === filterZone;
-    const inAreaFilter = !filterArea || STORES[i].area === filterArea;
-    const show = inFilter && inAreaFilter;
-    ctx.globalAlpha = isHover ? 1 : (show ? 0.7 : 0.06);
-    // Light outline so dark dots are visible against dark background
-    ctx.strokeStyle = 'rgba(255,255,255,0.5)';
-    ctx.lineWidth = 0.5;
-    ctx.fillStyle = z >= 0 ? zoneColors[z % zoneColors.length] : '#555';
-    ctx.beginPath();
-    ctx.arc(sx, sy, isHover ? 4 : r, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.stroke();
-    
+    for (let i = 0; i < STORES.length; i++) {
+      const pt = storePts[i];
+      if (!pt) continue;
+      const [sx, sy] = viewToScreen(pt.x, pt.y);
+      if (sx < -r || sx > mapW + r || sy < -r || sy > mapH + r) continue;
+      
+      const z = storeZone[i];
+      const isHover = i === hoverIdx;
+      const inFilter = filterZone < 0 || storeZone[i] === filterZone;
+      const inAreaFilter = !filterArea || STORES[i].area === filterArea;
+      const show = inFilter && inAreaFilter;
+      ctx.globalAlpha = isHover ? 1 : (show ? 0.7 : 0.06);
+      ctx.strokeStyle = 'rgba(255,255,255,0.5)';
+      ctx.lineWidth = 0.5;
+      ctx.fillStyle = z >= 0 ? zoneColors[z % zoneColors.length] : '#555';
+      ctx.beginPath();
+      ctx.arc(sx, sy, isHover ? 4 : r, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+      
+    }
   }
   
   ctx.globalAlpha = 1;
