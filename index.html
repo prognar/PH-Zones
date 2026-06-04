@@ -116,7 +116,6 @@ body{font-family:system-ui,-apple-system,sans-serif;background:#111;color:#e0e0e
     <label class="top-toggle" style="font-size:11px;cursor:pointer;display:flex;align-items:center;gap:3px;color:#aaa">
       <input type="checkbox" id="toggle-zones" onchange="redrawMap()"> Zones
     </label>
-    <button class="topbtn primary" onclick="runAutoAssign()">⚡ Auto Assign</button>
     <button class="topbtn" onclick="toggleConfig()">⚙ Config</button>
     <button class="topbtn" onclick="document.getElementById('import-file').click()">⬆ Import</button>
     <button class="topbtn" onclick="exportCSV()">⬇ Export</button>
@@ -201,8 +200,7 @@ body{font-family:system-ui,-apple-system,sans-serif;background:#111;color:#e0e0e
         <span style="color:#888;font-size:10px">Extra max capacity for stronger OAs</span>
       </div>
       <div style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap">
-        <button class="topbtn primary" onclick="runAutoAssign();toggleConfig()">⚡ Run Auto-Assign</button>
-        <button class="topbtn" onclick="resetToAutoAssign()">↺ Reset to Auto-Assign</button>
+        <button class="topbtn" onclick="resetToInitial()">↺ Reset to Initial</button>
         <button class="topbtn danger" onclick="clearAllAssignments()">✕ Clear All</button>
       </div>
     </div>
@@ -249,6 +247,7 @@ body{font-family:system-ui,-apple-system,sans-serif;background:#111;color:#e0e0e
 <div id="toast"></div>
 
 <script src="stores_data_v8.js"></script>
+<script src="initial_zones.js"></script>
 <script>
 // ===== OA DATA =====
 const OAS = [
@@ -257,7 +256,7 @@ const OAS = [
   {name:"Sarah Heitz",lat:37.975615,lon:-87.546905},
   {name:"Danielle Hudson",lat:32.744323,lon:-97.319097},
   {name:"AKM Shaju",lat:29.524448,lon:-95.200452},
-  {name:"Dustin Patton (Tampa)",lat:27.972561,lon:-82.530510},
+  {name:"Dustin Patton",lat:27.972561,lon:-82.530510},
   {name:"Jesse White",lat:33.772114,lon:-84.415325},
   {name:"Kathleen Basbagill",lat:40.292269,lon:-83.071464},
   {name:"Derron Spencer",lat:35.834247,lon:-78.66652},
@@ -292,9 +291,9 @@ const TBH_INIT = [
 
 // Zone colors (distinct)
 let zoneColors = [
-  "#e6194b","#3cb44b","#ffe119","#4363d8","#f58231","#911eb4","#42d4f4","#f032e6",
-  "#bfef45","#fabed4","#469990","#dcbeff","#9a6324","#fffac8","#800000","#aaffc3",
-  "#808000","#ffd8b1","#000075","#a9a9a9","#ff6f61","#6a3d9a","#b3e4a3","#f4a582"
+  "#e6194b","#3cb44b","#ffe119","#4363d8","#f58231","#00aaff","#42d4f4","#f032e6",
+  "#bfef45","#fabed4","#469990","#dcbeff","#c800ff","#fffac8","#800000","#aaffc3",
+  "#808000","#ffd8b1","#ffff00","#a9a9a9","#ff6f61","#6a3d9a","#b3e4a3","#f4a582"
 ];
 
 // ===== STATE =====
@@ -835,7 +834,7 @@ function applyTBHLocations() {
     if (latEl) tbhLocs[t].lat = parseFloat(latEl.value);
     if (lonEl) tbhLocs[t].lon = parseFloat(lonEl.value);
   }
-  runAutoAssign();
+  loadInitialAssignments();
   toggleConfig();
 }
 
@@ -926,7 +925,8 @@ function initMap() {
       if (hoverIdx >= 0) {
         const st = STORES[hoverIdx]; const zz = storeZone[hoverIdx];
         const locked = isDmaLocked(hoverIdx) ? ' 🔒' : '';
-        showTooltip(e, `#${st.id} | ${st.dma} | ${st.area}${st.franchisee ? ' | '+st.franchisee : ''}<br>Zone: ${zz >= 0 ? (zz+1)+' - '+zoneName(zz) : 'Unassigned'}${locked}`);
+        const loc = [st.city, st.state].filter(Boolean).join(', ');
+        showTooltip(e, `#${st.id} | ${st.dma}${loc ? ' | '+loc : ''}<br>${st.area}${st.franchisee ? ' | '+st.franchisee : ''}<br>Zone ${zz >= 0 ? (zz+1)+' — '+zoneName(zz) : 'Unassigned'}${locked}`);
       } else {
         hideTooltip();
       }
@@ -1065,8 +1065,8 @@ function redrawMap() {
   
   // Zone territory overlay (per-store Voronoi — every pixel colored by nearest store's zone)
   if (showZonesOverlay) {
-    const sp = [];
-    const sz = [];
+    // Build global store data, grouped by state for isolated regions
+    const sp = [], sz = [], st = [];
     for (let i = 0; i < STORES.length; i++) {
       const pt = storePts[i];
       if (!pt) continue;
@@ -1074,49 +1074,83 @@ function redrawMap() {
       if (z < 0) continue;
       sp.push(viewToScreen(pt.x, pt.y));
       sz.push(z);
+      st.push(STORES[i].state);
     }
-    if (sp.length >= 3) {
-      ctx.save();
-      if (usTopoData) {
-        const k = sc, tx2 = tx, ty2 = ty;
-        const proj = d3.geoAlbersUsa()
-          .scale(mapW * 1.25 * k)
-          .translate([mapW / 2 * k + tx2, mapH / 2 * k + ty2]);
-        const pg = d3.geoPath(proj);
-        const allStates = topojson.feature(usTopoData, usTopoData.objects.states);
-        const lower48 = { type: 'FeatureCollection', features: allStates.features.filter(f => f.id !== '02' && f.id !== '15') };
-        ctx.clip(new Path2D(pg(lower48)));
-      }
-      const delaunay = d3.Delaunay.from(sp);
-      // Render zone map at reduced resolution, then scale up
+    if (sp.length >= 3 && usTopoData) {
+      const k = sc, tx2 = tx, ty2 = ty;
+      const proj = d3.geoAlbersUsa()
+        .scale(mapW * 1.25 * k)
+        .translate([mapW / 2 * k + tx2, mapH / 2 * k + ty2]);
+      const pg = d3.geoPath(proj);
+      const allStates = topojson.feature(usTopoData, usTopoData.objects.states);
       const G = 5;
       const cols = Math.ceil(mapW / G);
       const rows = Math.ceil(mapH / G);
-      const tmp = document.createElement('canvas');
-      tmp.width = cols; tmp.height = rows;
-      const tc = tmp.getContext('2d');
-      const grid = new Uint8Array(cols * rows);
-      const used = new Set();
-      for (let r = 0; r < rows; r++) {
-        for (let c = 0; c < cols; c++) {
-          const v = sz[delaunay.find(c * G + G / 2, r * G + G / 2)];
-          grid[r * cols + c] = v;
-          used.add(v);
+
+      // Helper: render Voronoi grid for a subset of stores, clipped to given state features
+      function renderZoneGrid(storeIndices, clipFeatures) {
+        const local = storeIndices.map(i => ({ p: sp[i], z: sz[i] }));
+        if (local.length < 3) {
+          // Not enough stores — fill with the single store's zone
+          if (local.length === 1) {
+            ctx.save();
+            ctx.clip(new Path2D(pg(clipFeatures)));
+            ctx.fillStyle = zoneColors[local[0].z % zoneColors.length];
+            ctx.fillRect(0, 0, mapW, mapH);
+            ctx.restore();
+          }
+          return;
         }
-      }
-      for (const z of used) {
-        tc.fillStyle = zoneColors[z % zoneColors.length];
-        tc.beginPath();
-        for (let i = 0; i < grid.length; i++) {
-          if (grid[i] === z) tc.rect(i % cols, Math.floor(i / cols), 1, 1);
+        const ld = d3.Delaunay.from(local.map(d => d.p));
+        const tmp = document.createElement('canvas');
+        tmp.width = cols; tmp.height = rows;
+        const tc = tmp.getContext('2d');
+        const grid = new Uint8Array(cols * rows);
+        const used = new Set();
+        for (let r = 0; r < rows; r++) {
+          for (let c = 0; c < cols; c++) {
+            const v = local[ld.find(c * G + G / 2, r * G + G / 2)].z;
+            grid[r * cols + c] = v;
+            used.add(v);
+          }
         }
-        tc.fill();
+        for (const z of used) {
+          tc.fillStyle = zoneColors[z % zoneColors.length];
+          tc.beginPath();
+          for (let i = 0; i < grid.length; i++) {
+            if (grid[i] === z) tc.rect(i % cols, Math.floor(i / cols), 1, 1);
+          }
+          tc.fill();
+        }
+        ctx.save();
+        ctx.globalAlpha = 0.2;
+        ctx.clip(new Path2D(pg(clipFeatures)));
+        ctx.drawImage(tmp, 0, 0, mapW, mapH);
+        ctx.restore();
       }
-      ctx.globalAlpha = 0.12;
-      ctx.drawImage(tmp, 0, 0, mapW, mapH);
-      ctx.restore();
+
+      // Build store index sets for each region
+      const mainlandIdx = [], akIdx = [], hiIdx = [];
+      for (let i = 0; i < sp.length; i++) {
+        if (st[i] === 'AK') akIdx.push(i);
+        else if (st[i] === 'HI') hiIdx.push(i);
+        else mainlandIdx.push(i);
+      }
+
+      // Render mainland (lower 48) — no AK or HI stores
+      const lower48Features = { type: 'FeatureCollection', features: allStates.features.filter(f => f.id !== '02' && f.id !== '15') };
+      renderZoneGrid(mainlandIdx, lower48Features);
+
+      // Render Alaska with only AK stores, clipped to AK boundary
+      const akFeature = allStates.features.find(f => f.id === '02');
+      if (akFeature) renderZoneGrid(akIdx, akFeature);
+
+      // Render Hawaii with only HI stores, clipped to HI boundary
+      const hiFeature = allStates.features.find(f => f.id === '15');
+      if (hiFeature) renderZoneGrid(hiIdx, hiFeature);
+
+      ctx.globalAlpha = 1;
     }
-    ctx.globalAlpha = 1;
   }
   
   // Draw stores
@@ -1701,14 +1735,29 @@ function generateSuggestions() {
   container.innerHTML = html;
 }
 
-function resetToAutoAssign() {
-  runAutoAssign();
-  toast('Reset to auto-assigned state');
+function resetToInitial() {
+  loadInitialAssignments();
+  toast('Reset to initial zone assignments');
 }
 function clearAllAssignments() {
   storeZone = new Int16Array(STORES.length).fill(-1);
   render();
   toast('All assignments cleared');
+}
+
+function loadInitialAssignments() {
+  if (typeof INITIAL_ZONES === 'undefined') {
+    toast('Initial zone data not loaded — check that initial_zones.js exists');
+    return;
+  }
+  storeZone = new Int16Array(STORES.length).fill(-1);
+  let assigned = 0;
+  for (let i = 0; i < STORES.length; i++) {
+    const z = INITIAL_ZONES[STORES[i].id];
+    if (z !== undefined && z >= 0 && z < NUM_ZONES) { storeZone[i] = z; assigned++; }
+  }
+  render();
+  toast(`Loaded ${assigned} initial zone assignments`);
 }
 
 function applySuggestion(si, toZone) {
@@ -1814,8 +1863,7 @@ document.addEventListener('DOMContentLoaded', () => {
       document.getElementById('map-loading').textContent = '⚠ Map error — see console';
     }
   }
-  render();
-  toast(`Loaded ${STORES.length} stores. Click "Auto Assign" to begin.`);
+  loadInitialAssignments();
 });
 </script>
 </body>
