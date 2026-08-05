@@ -116,6 +116,8 @@ body{font-family:system-ui,-apple-system,sans-serif;background:#111;color:#e0e0e
     <label class="top-toggle" style="font-size:11px;cursor:pointer;display:flex;align-items:center;gap:3px;color:#aaa">
       <input type="checkbox" id="toggle-zones" onchange="redrawMap()"> Zones
     </label>
+    <select id="filter-fop" onchange="setFopFilter(this.value)" style="font-size:10px;background:#2a2a3e;border:1px solid #555;border-radius:3px;color:#e0e0e0;padding:2px 4px"><option value="">All FOPs</option></select>
+    <select id="filter-region" onchange="setRegionFilter(this.value)" style="font-size:10px;background:#2a2a3e;border:1px solid #555;border-radius:3px;color:#e0e0e0;padding:2px 4px"><option value="">All Regions</option></select>
     <button class="topbtn" onclick="toggleConfig()">⚙ Config</button>
     <button class="topbtn" onclick="document.getElementById('import-file').click()">⬆ Import</button>
     <button class="topbtn" onclick="exportCSV()">⬇ Export</button>
@@ -209,7 +211,7 @@ body{font-family:system-ui,-apple-system,sans-serif;background:#111;color:#e0e0e
       <h3>TBH Zone Locations</h3>
       <p style="font-size:11px;color:#888;margin-bottom:8px">Set locations for the 9 To-Be-Hired OA zones. Place in densely populated store areas.</p>
       <table id="tbh-table">
-        <thead><tr><th>Zone</th><th>Name</th><th>Lat</th><th>Lon</th><th>Assigned</th></tr></thead>
+        <thead><tr><th>Zone</th><th>OA</th><th>Lat</th><th>Lon</th><th>Assigned</th></tr></thead>
         <tbody id="tbh-tbody"></tbody>
       </table>
       <button class="topbtn warning" onclick="optimizeTBHLocations()" style="margin-top:8px">🎯 Auto-Place TBH (density centers)</button>
@@ -262,7 +264,7 @@ const OAS = [
   {name:"Derron Spencer",lat:35.834247,lon:-78.66652},
   {name:"Finley Klement",lat:39.09098,lon:-94.61312},
   {name:"Sergio Villasenor",lat:41.99889,lon:-87.64737},
-  {name:"Cellisha Steel",lat:47.44035,lon:-122.30552},
+  {name:"Cellesha Steel",lat:47.44035,lon:-122.30552},
   {name:"Tim King",lat:40.747255,lon:-73.63967},
   {name:"Michael Grant",lat:36.176553,lon:-86.877755},
   {name:"Paul Inacio",lat:30.432131,lon:-87.218094}
@@ -287,6 +289,34 @@ const TBH_INIT = [
   {name:"Jacksonville (TBH)",lat:30.3322,lon:-81.6557},
   {name:"Charlotte (TBH)",lat:35.2271,lon:-80.8431},
   {name:"Pittsburgh (TBH)",lat:40.4406,lon:-79.9959}
+];
+
+// ===== ZONE ALIGNMENT (OA / Zone Name / Region / FOP) =====
+const ZONE_DATA = [
+  {name:"Southern California", oa:"Jiselle Medina", region:"West", fop:"Jake Stubblefield"},
+  {name:"Desert Southwest", oa:"Hellen Lobaccaro", region:"West", fop:"Jake Stubblefield"},
+  {name:"OH Valley West", oa:"Sarah Heitz", region:"East", fop:"Kelly Sharpe"},
+  {name:"North Texas", oa:"Danielle Hudson", region:"West", fop:"Noel Pelayo"},
+  {name:"Houston/SE Texas", oa:"AKM Shaju", region:"West", fop:"Noel Pelayo"},
+  {name:"", oa:"Dustin Patton", region:"East", fop:"Fern Reyes"},
+  {name:"", oa:"Jesse White", region:"East", fop:"Fern Reyes"},
+  {name:"OH Valley East", oa:"Kathleen Basbagill", region:"East", fop:"Kelly Sharpe"},
+  {name:"Carolinas East", oa:"Derron Spencer", region:"East", fop:"Kelly Sharpe"},
+  {name:"Central Plains", oa:"Finley Klement", region:"West", fop:"Noel Pelayo"},
+  {name:"Upper Midwest", oa:"Sergio Villasenor", region:"East", fop:"Kelly Sharpe"},
+  {name:"Pacific Northwest", oa:"Cellesha Steel", region:"West", fop:"Jake Stubblefield"},
+  {name:"Northeast Metro", oa:"Tim King", region:"East", fop:"Kelly Sharpe"},
+  {name:"Mid-South", oa:"Michael Grant", region:"East", fop:"Fern Reyes"},
+  {name:"Gulf Coast", oa:"Paul Inacio", region:"West", fop:"Noel Pelayo"},
+  {name:"Mountain West/Denver", oa:"Emily Curry", region:"West", fop:"Jake Stubblefield"},
+  {name:"Northern California", oa:"TBD", region:"West", fop:"Jake Stubblefield"},
+  {name:"San Antonio/W Texas", oa:"TBD", region:"West", fop:"Noel Pelayo"},
+  {name:"Oklahoma North", oa:"TBD", region:"West", fop:"Noel Pelayo"},
+  {name:"Missouri/Illinois", oa:"Stanton Hughes", region:"East", fop:"Fern Reyes"},
+  {name:"Northern Plains", oa:"TBD", region:"West", fop:"Jake Stubblefield"},
+  {name:"Jacksonville/N Florida", oa:"Vic Vieira", region:"East", fop:"Fern Reyes"},
+  {name:"Carolinas West", oa:"TBD", region:"East", fop:"Fern Reyes"},
+  {name:"Appalachia/PA", oa:"TBD", region:"East", fop:"Kelly Sharpe"}
 ];
 
 // Zone colors (distinct)
@@ -349,6 +379,7 @@ let storeZone = new Int16Array(STORES.length).fill(-1);
 let tbhLocs = TBH_INIT.map(x => ({...x}));
 let oaLocs = OAS.map(x => ({...x}));
 let filterZone = -1, filterArea = null; // for highlighting
+let filterFop = null, filterRegion = null; // FOP / Region filters
 
 // ===== HELPERS =====
 function haversine(lat1, lon1, lat2, lon2) {
@@ -383,8 +414,44 @@ function nearestOA(si) {
 }
 
 function zoneName(z) {
+  if (z < 0) return 'Unassigned';
+  if (z >= 0 && z < NUM_ZONES && ZONE_DATA[z].name) return ZONE_DATA[z].name;
   if (z < OA_COUNT) return OAS[z].name;
   return tbhLocs[z - OA_COUNT].name;
+}
+
+function zoneOa(z) {
+  const oa = ZONE_DATA[z].oa;
+  if (oa && oa !== 'TBD') return oa;
+  return zoneName(z);
+}
+
+function inFilters(z) {
+  if (z < 0) return filterZone < 0 && !filterRegion && !filterFop;
+  if (filterZone >= 0 && z !== filterZone) return false;
+  if (filterRegion && ZONE_DATA[z].region !== filterRegion) return false;
+  if (filterFop && ZONE_DATA[z].fop !== filterFop) return false;
+  return true;
+}
+
+function setFopFilter(v) { filterFop = v === '' ? null : v; if (mapCtx) redrawMap(); }
+function setRegionFilter(v) { filterRegion = v === '' ? null : v; if (mapCtx) redrawMap(); }
+
+function populateZoneFilters() {
+  const fopSel = document.getElementById('filter-fop');
+  const regSel = document.getElementById('filter-region');
+  const curFop = fopSel ? fopSel.value : '';
+  const curReg = regSel ? regSel.value : '';
+  if (fopSel) {
+    const fops = [...new Set(ZONE_DATA.map(z => z.fop))].sort();
+    fopSel.innerHTML = '<option value="">All FOPs</option>' + fops.map(f => `<option>${f}</option>`).join('');
+    fopSel.value = curFop;
+  }
+  if (regSel) {
+    const regs = [...new Set(ZONE_DATA.map(z => z.region))].sort();
+    regSel.innerHTML = '<option value="">All Regions</option>' + regs.map(r => `<option>${r}</option>`).join('');
+    regSel.value = curReg;
+  }
 }
 
 function zoneCounts() {
@@ -812,7 +879,7 @@ function balanceZones() {
       eCounts[c.toZone]++;
       moved++;
     }
-    if (moved > 0) console.log(`Phase E: moved ${moved} stores out of Zone ${zoneName(z)} (${eCounts[z]} remaining)`);
+    if (moved > 0) console.log(`Phase E: moved ${moved} stores out of ${zoneName(z)} (${eCounts[z]} remaining)`);
   }
 }
 
@@ -974,7 +1041,7 @@ function initMap() {
         const st = STORES[hoverIdx]; const zz = storeZone[hoverIdx];
         const locked = isDmaLocked(hoverIdx) ? ' 🔒' : '';
         const loc = [st.city, st.state].filter(Boolean).join(', ');
-        showTooltip(e, `#${st.id} | ${st.dma}${loc ? ' | '+loc : ''}<br>${st.area}${st.franchisee ? ' | '+st.franchisee : ''}<br>Zone ${zz >= 0 ? (zz+1)+' — '+zoneName(zz) : 'Unassigned'}${locked}`);
+        showTooltip(e, `#${st.id} | ${st.dma}${loc ? ' | '+loc : ''}<br>${st.area}${st.franchisee ? ' | '+st.franchisee : ''}<br>${zz >= 0 ? zoneName(zz) + ' — ' + ZONE_DATA[zz].region + ' | FOP ' + ZONE_DATA[zz].fop : 'Unassigned'}${locked}`);
       } else {
         hideTooltip();
       }
@@ -982,7 +1049,7 @@ function initMap() {
         const [sx, sy] = viewToScreen(oa.px, oa.py);
         const d = Math.hypot(mx - sx, my - sy);
         if (d < 8) {
-          showTooltip(e, `${oa.name}: ${zoneCounts()[oa.z]} stores`);
+          showTooltip(e, `${oa.name} — ${zoneName(oa.z)}: ${zoneCounts()[oa.z]} stores`);
           break;
         }
       }
@@ -1048,7 +1115,7 @@ function rebuildMarkers() {
     if (!isTbh) { lat = oaLocs[z].lat; lon = oaLocs[z].lon; name = OAS[z].name; }
     else { const t = tbhLocs[z - OA_COUNT]; lat = t.lat; lon = t.lon; name = t.name; }
     const p = projection([lon, lat]);
-    if (p) oaMarkers.push({name, z, isTbh, px: p[0], py: p[1]});
+    if (p) oaMarkers.push({name: zoneOa(z), z, isTbh, px: p[0], py: p[1]});
   }
 }
 
@@ -1214,7 +1281,7 @@ function redrawMap() {
       
       const z = storeZone[i];
       const isHover = i === hoverIdx;
-      const inFilter = filterZone < 0 || storeZone[i] === filterZone;
+      const inFilter = inFilters(storeZone[i]);
       const inAreaFilter = !filterArea || STORES[i].area === filterArea;
       const show = inFilter && inAreaFilter;
       ctx.globalAlpha = isHover ? 1 : (show ? 0.7 : 0.06);
@@ -1250,7 +1317,7 @@ function redrawMap() {
     ctx.textBaseline = 'top';
     ctx.shadowColor = 'rgba(0,0,0,0.9)';
     ctx.shadowBlur = 4;
-    ctx.fillText(`${oa.z+1}: ${oa.name.replace(' (TBH)', '')}`, sx, sy + rOa + 3);
+    ctx.fillText(oa.name, sx, sy + rOa + 3);
     ctx.shadowBlur = 0;
   }
   
@@ -1314,6 +1381,7 @@ function render() {
   renderAreaSplits();
   renderTBHTable();
   populateSGFilter();
+  populateZoneFilters();
 }
 
 function zoneStats(z) {
@@ -1351,11 +1419,12 @@ function renderZoneCards() {
     const lockOn = z < OA_COUNT && oaDmas[z] && !dmaLocksDisabled.has(z);
     html += `<div class="zone-card" onclick="showZoneDetail(${z})" style="border-left:3px solid ${color}">
       <div class="zhdr">
-        <span class="zname">${z+1}. ${zoneName(z)}</span>
+        <span class="zname">${zoneName(z)}</span>
         ${z < OA_COUNT ? `<span class="zlock" onclick="event.stopPropagation();toggleDmaLock(${z})" style="cursor:pointer;font-size:10px;margin-left:2px">${lockOn ? '🔒' : '🔓'}</span>` : ''}
         <span class="zcount">${c}</span>
       </div>
       <div class="zbar"><div class="zbar-fill" style="width:${pct}%;background:${color}"></div></div>
+      <div class="zsub">OA: ${ZONE_DATA[z].oa} | ${ZONE_DATA[z].region} | FOP: ${ZONE_DATA[z].fop}</div>
       <div class="zsub">Target: ${tMin}-${zMax} | Avg drive: ~${avgDriveMin}h</div>
       <div class="zsub"><input class="zlat" value="${loc.lat.toFixed(4)}" size="7" onclick="event.stopPropagation()" onchange="updateCentroid(${z},'lat',this.value)"> <input class="zlon" value="${loc.lon.toFixed(4)}" size="7" onclick="event.stopPropagation()" onchange="updateCentroid(${z},'lon',this.value)"></div>
       <span class="zstatus zs-${statusClass}">${status}</span>
@@ -1434,8 +1503,8 @@ function renderTBHTable() {
   for (let t = 0; t < TBH_COUNT; t++) {
     const z = OA_COUNT + t;
     html += `<tr>
-      <td>${z+1}</td>
-      <td><input type="text" id="tbh-name-${t}" value="${tbhLocs[t].name}" style="width:140px"></td>
+      <td>${z+1}. ${zoneName(z)}</td>
+      <td>${ZONE_DATA[z].oa}</td>
       <td><input type="number" id="tbh-lat-${t}" value="${tbhLocs[t].lat}" step="0.0001"></td>
       <td><input type="number" id="tbh-lon-${t}" value="${tbhLocs[t].lon}" step="0.0001"></td>
       <td>${counts[z] || 0}</td>
@@ -1594,7 +1663,7 @@ function renderZoneThresholds() {
     const curMax = getTargetMax(z);
     const c = zoneColors[z % zoneColors.length];
     html += `<tr>
-      <td style="padding:2px 4px;border-bottom:1px solid #333">${z+1}. ${zoneName(z).substring(0,22)}</td>
+      <td style="padding:2px 4px;border-bottom:1px solid #333">${zoneName(z)}</td>
       <td style="padding:2px 4px;border-bottom:1px solid #333"><input type="color" value="${c}" onchange="changeZoneColor(${z}, this.value)" style="width:28px;height:20px;padding:0;border:1px solid #555;border-radius:3px;background:0;cursor:pointer"></td>
       <td style="padding:2px 4px;border-bottom:1px solid #333">${curMax}</td>
       <td style="padding:2px 4px;border-bottom:1px solid #333">${isOA ? `<input type="checkbox" id="strong-${z}" ${isStrong ? 'checked' : ''} onchange="toggleStrong(${z})">` : '—'}</td>
@@ -1632,7 +1701,7 @@ function showZoneDetail(z) {
     if (storeZone[i] === z) stores_in_zone.push(i);
   }
   
-  toast(`Zone ${z+1} (${zoneName(z)}): ${stores_in_zone.length} stores | Target: ${getTargetMin(z)}-${getTargetMax(z)} | ${counts[z] > getTargetMax(z) ? '⚠ Over by '+(counts[z]-getTargetMax(z)) : counts[z] < getTargetMin(z) ? '⚠ Under by '+(getTargetMin(z)-counts[z]) : '✅'}`);
+  toast(`${zoneName(z)}: ${stores_in_zone.length} stores | Target: ${getTargetMin(z)}-${getTargetMax(z)} | ${counts[z] > getTargetMax(z) ? '⚠ Over by '+(counts[z]-getTargetMax(z)) : counts[z] < getTargetMin(z) ? '⚠ Under by '+(getTargetMin(z)-counts[z]) : '✅'}`);
 }
 
 // ===== AREA DETAIL =====
@@ -1680,7 +1749,7 @@ function renderAreaDetail() {
   const zl = document.getElementById('area-zone-list');
   zl.innerHTML = Object.entries(zCounts).length
     ? Object.entries(zCounts).map(([z, c]) =>
-        `<span style="color:${zoneColors[z%zoneColors.length]}">Zone ${+z+1}: ${c}</span>`
+        `<span style="color:${zoneColors[z%zoneColors.length]}">${zoneName(+z)}: ${c}</span>`
       ).join(' &middot; ')
     : '<span style="color:#888">No assigned stores</span>';
   
@@ -1688,7 +1757,7 @@ function renderAreaDetail() {
   const sel = document.getElementById('area-move-zone');
   sel.innerHTML = '';
   for (let z = 0; z < NUM_ZONES; z++) {
-    sel.innerHTML += `<option value="${z}">${z+1}. ${zoneName(z)}</option>`;
+    sel.innerHTML += `<option value="${z}">${zoneName(z)}</option>`;
   }
   
   // Store list
@@ -1699,7 +1768,7 @@ function renderAreaDetail() {
     return `<div style="display:flex;align-items:center;gap:4px;padding:2px 4px;border-bottom:1px solid #2a2a3e">
       <span style="color:#666">#${STORES[si].id}</span>
       <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${STORES[si].dma}</span>
-      <span style="color:${zoneColors[z%zoneColors.length]}">${z+1}</span>
+      <span style="color:${zoneColors[z%zoneColors.length]}">${zoneName(z)}</span>
       ${locked ? '<span style="color:#4a8;font-size:8px">🔒</span>' : ''}
       <select onchange="moveStoreToZone(${si}, +this.value)" style="font-size:9px;padding:1px 3px;background:#2a2a3e;border:1px solid #555;border-radius:3px;color:#e0e0e0">
         ${Array.from({length: NUM_ZONES}, (_, i) =>
@@ -1715,7 +1784,7 @@ function moveStoreToZone(si, toZone) {
   storeZone[si] = toZone;
   renderAreaDetail();
   render();
-  toast(`Store #${STORES[si].id}: Zone ${from+1} → ${toZone+1} (${zoneName(toZone)})`);
+  toast(`Store #${STORES[si].id}: ${zoneName(from)} → ${zoneName(toZone)}`);
 }
 
 function moveAreaToZone() {
@@ -1739,7 +1808,7 @@ function populateSGFilter() {
   const cur = sel.value;
   sel.innerHTML = '<option value="-1">All Zones</option>';
   for (let z = 0; z < NUM_ZONES; z++) {
-    sel.innerHTML += `<option value="${z}">${z+1}. ${zoneName(z)}</option>`;
+    sel.innerHTML += `<option value="${z}">${zoneName(z)}</option>`;
   }
   sel.value = cur;
 }
@@ -1789,7 +1858,7 @@ function generateSuggestions() {
       const cand = candidates[c];
       html += `<div class="sg-item" onclick="applySuggestion(${cand.idx}, ${cand.toZone})">
         <div class="sg-info">#${cand.store.id} | ${cand.store.area}<br>
-          <span style="color:#888">Zone ${oz+1} → ${cand.toZone+1} (${cand.dist.toFixed(0)} mi)</span>
+          <span style="color:#888">${zoneName(oz)} → ${zoneName(cand.toZone)} (${cand.dist.toFixed(0)} mi)</span>
         </div>
         <button class="sg-btn">Move</button>
       </div>`;
