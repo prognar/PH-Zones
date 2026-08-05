@@ -25,6 +25,9 @@ body{font-family:system-ui,-apple-system,sans-serif;background:#111;color:#e0e0e
 .topbtn.danger:hover{background:#b03030}
 .topbtn.warning{background:#8b6b20;border-color:#b09030}
 .topbtn.warning:hover{background:#b09030}
+.filter-summary{font-size:11px;color:#ccc;background:#1e2a3e;border:1px solid #3a4a6e;border-radius:6px;padding:5px 10px;max-width:100%}
+.filter-summary b{color:#fff}
+.zone-card.dim{opacity:0.3}
 /* Main layout */
 #main{display:flex;flex:1;overflow:hidden}
 #map-panel{flex:1;position:relative;overflow:hidden;background:#0f172a}
@@ -118,6 +121,7 @@ body{font-family:system-ui,-apple-system,sans-serif;background:#111;color:#e0e0e
     </label>
     <select id="filter-fop" onchange="setFopFilter(this.value)" style="font-size:10px;background:#2a2a3e;border:1px solid #555;border-radius:3px;color:#e0e0e0;padding:2px 4px"><option value="">All FOPs</option></select>
     <select id="filter-region" onchange="setRegionFilter(this.value)" style="font-size:10px;background:#2a2a3e;border:1px solid #555;border-radius:3px;color:#e0e0e0;padding:2px 4px"><option value="">All Regions</option></select>
+    <div id="filter-summary" class="filter-summary hidden"></div>
     <button class="topbtn" onclick="toggleConfig()">⚙ Config</button>
     <button class="topbtn" onclick="document.getElementById('import-file').click()">⬆ Import</button>
     <button class="topbtn" onclick="exportCSV()">⬇ Export</button>
@@ -434,8 +438,40 @@ function inFilters(z) {
   return true;
 }
 
-function setFopFilter(v) { filterFop = v === '' ? null : v; if (mapCtx) redrawMap(); }
-function setRegionFilter(v) { filterRegion = v === '' ? null : v; if (mapCtx) redrawMap(); }
+function setFopFilter(v) { filterFop = v === '' ? null : v; if (mapCtx) redrawMap(); updateFilterSummary(); }
+function setRegionFilter(v) { filterRegion = v === '' ? null : v; if (mapCtx) redrawMap(); updateFilterSummary(); }
+
+function matchingZones() {
+  const zones = [];
+  for (let z = 0; z < NUM_ZONES; z++) {
+    if (filterRegion && ZONE_DATA[z].region !== filterRegion) continue;
+    if (filterFop && ZONE_DATA[z].fop !== filterFop) continue;
+    zones.push(z);
+  }
+  return zones;
+}
+
+function zoneMatchesFilter(z) {
+  return (!filterRegion || ZONE_DATA[z].region === filterRegion) && (!filterFop || ZONE_DATA[z].fop === filterFop);
+}
+
+function updateFilterSummary() {
+  const el = document.getElementById('filter-summary');
+  if (!el) return;
+  if (!filterRegion && !filterFop) { el.classList.add('hidden'); return; }
+  const zones = matchingZones();
+  const counts = zoneCounts();
+  let total = 0;
+  for (const z of zones) total += counts[z];
+  const parts = zones.map(z => {
+    const c = counts[z];
+    const flag = c > getTargetMax(z) ? ' ⚠' : c < getTargetMin(z) ? ' ▲' : '';
+    return `<span style="color:${zoneColors[z % zoneColors.length]}">${zoneName(z)} ${c}${flag}</span>`;
+  }).join(' · ');
+  const label = [filterFop ? `FOP ${filterFop}` : '', filterRegion ? `Region ${filterRegion}` : ''].filter(Boolean).join(' + ');
+  el.innerHTML = `<b>${label}</b>: ${zones.length} zones · ${total} stores &nbsp;|&nbsp; ${parts}`;
+  el.classList.remove('hidden');
+}
 
 function populateZoneFilters() {
   const fopSel = document.getElementById('filter-fop');
@@ -1382,6 +1418,7 @@ function render() {
   renderTBHTable();
   populateSGFilter();
   populateZoneFilters();
+  updateFilterSummary();
 }
 
 function zoneStats(z) {
@@ -1417,7 +1454,8 @@ function renderZoneCards() {
     
     const loc = z < OA_COUNT ? oaLocs[z] : tbhLocs[z - OA_COUNT];
     const lockOn = z < OA_COUNT && oaDmas[z] && !dmaLocksDisabled.has(z);
-    html += `<div class="zone-card" onclick="showZoneDetail(${z})" style="border-left:3px solid ${color}">
+    const dimCls = (filterRegion || filterFop) && !zoneMatchesFilter(z) ? ' dim' : '';
+    html += `<div class="zone-card${dimCls}" onclick="showZoneDetail(${z})" style="border-left:3px solid ${color}">
       <div class="zhdr">
         <span class="zname">${zoneName(z)}</span>
         ${z < OA_COUNT ? `<span class="zlock" onclick="event.stopPropagation();toggleDmaLock(${z})" style="cursor:pointer;font-size:10px;margin-left:2px">${lockOn ? '🔒' : '🔓'}</span>` : ''}
