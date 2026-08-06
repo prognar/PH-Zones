@@ -1,0 +1,90 @@
+﻿=== PER-ZONE UPDATE REPORT (with OA / Region / FOP) ===
+Baseline (old): stores_data_v8.js = 4732 stores across 24 zones
+New: Store Alignments.csv = 4700 open stores
+Directors: East = Betty Olvera | West = Colin Jefferson
+
+ZONE  ZONE NAME           OA                REGION FOP              OLD   DROPPED  ADDED   NEW   THRESHOLD
+----  ---------           --                ------ ---              ---   -------  -----   ---   ---------
+1     Southern California Jiselle Medina    West   Jake Stubblefield209   3        0       206   
+2     Desert Southwest    Hellen Lobaccaro  West   Jake Stubblefield147   0        0       147   *** BELOW 150 FLOOR ***
+3     OH Valley West      Sarah Heitz       East   Kelly Sharpe     185   2        0       183   
+4     North Texas         Danielle Hudson   West   Noel Pelayo      249   0        0       249   
+5     Houston/SE Texas    AKM Shaju         West   Noel Pelayo      242   0        0       242   
+6     Florida Gulf        Dustin Patton     East   Fern Reyes       203   0        0       203   
+7     Deep South          Jesse White       East   Fern Reyes       187   4        0       183   
+8     OH Valley East      Kathleen BasbagillEast   Kelly Sharpe     211   0        0       211   
+9     Carolinas East      Derron Spencer    East   Kelly Sharpe     196   0        1       197   
+10    Central Plains      Finley Klement    West   Noel Pelayo      199   1        0       198   
+11    Upper Midwest       Sergio Villasenor East   Kelly Sharpe     216   0        0       216   
+12    Pacific Northwest   Cellesha Steel    West   Jake Stubblefield163   0        0       163   
+13    Northeast Metro     Tim King          East   Kelly Sharpe     239   4        1       236   
+14    Mid-South           Michael Grant     East   Fern Reyes       171   1        0       170   
+15    Gulf Coast          Paul Inacio       West   Noel Pelayo      186   8        1       179   
+16    Mountain West/DenverEmily Curry       West   Jake Stubblefield182   1        0       181   
+17    Northern California TBD               West   Jake Stubblefield156   3        0       153   
+18    San Antonio/W Texas TBD               West   Noel Pelayo      207   0        0       207   
+19    Oklahoma North      TBD               West   Noel Pelayo      207   1        0       206   
+20    Missouri/Illinois   Stanton Hughes    East   Fern Reyes       198   3        0       195   
+21    Northern Plains     TBD               West   Jake Stubblefield193   1        0       192   
+22    Jacksonville/N FloridaVic Vieira        East   Fern Reyes       157   0        1       158   
+23    Carolinas West      TBD               East   Fern Reyes       188   1        0       187   
+24    Appalachia/PA       TBD               East   Kelly Sharpe     239   1        0       238   
+
+=== DROPPED STORES BY ZONE ===
+Zone 1 - Southern California (3 dropped):
+   027197   OCEANSIDE CA
+   027204   BRAWLEY CA
+   034027   WICHITA KS
+Zone 3 - OH Valley West (2 dropped):
+   041287   CONNERSVILLE IN
+   041461   PORTSMOUTH OH
+Zone 7 - Deep South (4 dropped):
+   037596   ALCOA TN
+   037609   KNOXVILLE TN
+   037612   KNOXVILLE TN
+   037618   POWELL TN
+Zone 10 - Central Plains (1 dropped):
+   042041   BALDWIN CITY KS
+Zone 13 - Northeast Metro (4 dropped):
+   037302   FOGELSVILLE PA
+   038797   BROOKLYN NY
+   039667   CICERO NY
+   040121   AUBURN NY
+Zone 14 - Mid-South (1 dropped):
+   036593   PINEVILLE KY
+Zone 15 - Gulf Coast (8 dropped):
+   033600   BRANDON MS
+   033603   JACKSON MS
+   033612   RICHLAND MS
+   034278   PONCHATOULA LA
+   034279   COVINGTON LA
+   034289   INDEPENDENCE LA
+   036769   JACKSON MS
+   037417   ALBANY LA
+Zone 16 - Mountain West/Denver (1 dropped):
+   035979   FRUITA CO
+Zone 17 - Northern California (3 dropped):
+   031228   LAHAINA HI
+   031242   HONOLULU HI
+   041208   SPARKS NV
+Zone 19 - Oklahoma North (1 dropped):
+   038431   TULSA OK
+Zone 20 - Missouri/Illinois (3 dropped):
+   025956   SAINT PETERS MO
+   038368   SAINT LOUIS MO
+   038916   FARMINGTON MO
+Zone 21 - Northern Plains (1 dropped):
+   013268   PLOVER WI
+Zone 23 - Carolinas West (1 dropped):
+   037661   JOHNSON CITY TN
+Zone 24 - Appalachia/PA (1 dropped):
+   040628   ROCKVILLE MD
+
+=== NEW STORES (brand new to the tool, now assigned) ===
+   042985   VINTON VA   ->   Carolinas East (Zone 9, OA Derron Spencer)
+   043210   HOMERVILLE GA   ->   Jacksonville/N Florida (Zone 22, OA Vic Vieira)
+   043214   BILOXI MS   ->   Gulf Coast (Zone 15, OA Paul Inacio)
+   043258   AUBURN NY   ->   Northeast Metro (Zone 13, OA Tim King)
+
+=== UNASSIGNED / NEEDS REVIEW ===
+   (none - all 4700 open stores now have a zone assignment)
