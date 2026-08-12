@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>OA Zone Alignment Manager v8</title>
+<title>OA Zone Alignment Manager v9</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.9.0/d3.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/topojson/3.0.2/topojson.min.js"></script>
 <style>
@@ -106,12 +106,16 @@ body{font-family:system-ui,-apple-system,sans-serif;background:#111;color:#e0e0e
 <div id="app">
   <div id="progress-wrap"><div id="progress-bar"></div></div>
   <div id="topbar">
-    <h1>OA Zone Alignment v8</h1>
+    <h1>OA Zone Alignment v9</h1>
     <div class="stats">
       <span class="st">Stores: <b id="total-stores">0</b></span>
       <span class="st">Assigned: <b id="assigned-count">0</b></span>
       <span class="st">σ: <b id="sigma-display">—</b></span>
       <span class="st"><span id="over-under"></span></span>
+    </div>
+    <div id="mode-toggle" style="display:flex;border:1px solid #555;border-radius:6px;overflow:hidden">
+      <button class="topbtn" id="mode-btn-24" onclick="switchMode(24)" style="border:0;border-radius:0;background:#1a6b3c">24 Zones</button>
+      <button class="topbtn" id="mode-btn-50" onclick="switchMode(50)" style="border:0;border-radius:0">50 Zones</button>
     </div>
     <label class="top-toggle" style="font-size:11px;cursor:pointer;display:flex;align-items:center;gap:3px;color:#aaa">
       <input type="checkbox" id="toggle-dots" checked onchange="redrawMap()"> Dots
@@ -211,9 +215,18 @@ body{font-family:system-ui,-apple-system,sans-serif;background:#111;color:#e0e0e
       </div>
     </div>
 
+    <div class="cfg-section" id="new-hire-section">
+      <h3>🆕 26 New Hire Placement Suggestions (50-Zone Plan)</h3>
+      <p style="font-size:11px;color:#888;margin-bottom:8px">Each existing zone was split proportionally to its current store count (target ~94 stores/zone at 50 total). These are the suggested new territory centers — switch to 50-Zone mode and click Auto-Assign to see the full rebalanced map.</p>
+      <table id="newhire-table" style="width:100%;border-collapse:collapse;font-size:11px">
+        <thead><tr><th style="padding:4px;border:1px solid #333;background:#2a2a4e;color:#8cf">#</th><th style="padding:4px;border:1px solid #333;background:#2a2a4e;color:#8cf">Suggested Base</th><th style="padding:4px;border:1px solid #333;background:#2a2a4e;color:#8cf">Relieving Zone</th><th style="padding:4px;border:1px solid #333;background:#2a2a4e;color:#8cf">Est. Stores</th></tr></thead>
+        <tbody id="newhire-tbody"></tbody>
+      </table>
+    </div>
+
     <div class="cfg-section">
       <h3>TBH Zone Locations</h3>
-      <p style="font-size:11px;color:#888;margin-bottom:8px">Set locations for the 9 To-Be-Hired OA zones. Place in densely populated store areas.</p>
+      <p style="font-size:11px;color:#888;margin-bottom:8px" id="tbh-desc">Set locations for the To-Be-Hired / new-hire zones. Place in densely populated store areas.</p>
       <table id="tbh-table">
         <thead><tr><th>Zone</th><th>OA</th><th>Lat</th><th>Lon</th><th>Assigned</th></tr></thead>
         <tbody id="tbh-tbody"></tbody>
@@ -252,8 +265,9 @@ body{font-family:system-ui,-apple-system,sans-serif;background:#111;color:#e0e0e
 
 <div id="toast"></div>
 
-<script src="stores_data_v8.js"></script>
-<script src="initial_zones.js"></script>
+<script src="stores_data.js"></script>
+<script src="initial_zones_24.js"></script>
+<script src="new_zones_50.js"></script>
 <script>
 // ===== OA DATA =====
 const OAS = [
@@ -278,12 +292,13 @@ let STRONGER = [...STRONGER_INIT];
 let dmaLocksDisabled = new Set(); // OAs whose DMA lock has been turned off
 let splitAreas = []; // area names that are split across 2+ zones (array for indexed access)
 let currentSplitIdx = -1; // currently selected split area index
-const NUM_ZONES = 24; // 15 OA + 9 TBH
-const OA_COUNT = 15;
-const TBH_COUNT = 9;
+let CURRENT_MODE = 24; // 24 or 50
+let NUM_ZONES = 24; // 15 OA + 9 TBH (24-zone mode) or 15 OA + 35 flex (50-zone mode)
+const OA_COUNT = 15; // real, named OAs — identical in both modes
+let TBH_COUNT = 9;
 
 // TBH initial locations (dense areas based on store clustering)
-const TBH_INIT = [
+const TBH_INIT_24 = [
   {name:"Denver (TBH)",lat:39.7392,lon:-104.9903},
   {name:"Sacramento (TBH)",lat:38.5816,lon:-121.4944},
   {name:"San Antonio (TBH)",lat:29.4241,lon:-98.4936},
@@ -296,7 +311,7 @@ const TBH_INIT = [
 ];
 
 // ===== ZONE ALIGNMENT (OA / Zone Name / Region / FOP) =====
-const ZONE_DATA = [
+const ZONE_DATA_24 = [
   {name:"Southern California", oa:"Jiselle Medina", region:"West", fop:"Jake Stubblefield"},
   {name:"Desert Southwest", oa:"Hellen Lobaccaro", region:"West", fop:"Jake Stubblefield"},
   {name:"OH Valley West", oa:"Sarah Heitz", region:"East", fop:"Kelly Sharpe"},
@@ -324,11 +339,19 @@ const ZONE_DATA = [
 ];
 
 // Zone colors (distinct)
-let zoneColors = [
+const zoneColors24 = [
   "#e6194b","#3cb44b","#ffe119","#4363d8","#f58231","#00aaff","#42d4f4","#f032e6",
   "#bfef45","#fabed4","#469990","#dcbeff","#c800ff","#fffac8","#800000","#aaffc3",
   "#808000","#ffd8b1","#ffff00","#a9a9a9","#ff6f61","#6a3d9a","#b3e4a3","#f4a582"
 ];
+// 50-zone palette: first 24 match the 24-zone colors (same zones), remaining 26 generated
+const zoneColors50 = zoneColors24.concat(Array.from({length:26}, (_, i) => {
+  const hue = Math.round((i * 360 / 26 + 15) % 360);
+  return `hsl(${hue}, 70%, 55%)`;
+}));
+let ZONE_DATA = ZONE_DATA_24;
+let zoneColors = zoneColors24;
+let TBH_INIT = TBH_INIT_24;
 
 const MAJOR_CITIES = [
   {name:"Seattle",lat:47.6062,lon:-122.3321},{name:"Portland",lat:45.5152,lon:-122.6784},
@@ -384,6 +407,93 @@ let tbhLocs = TBH_INIT.map(x => ({...x}));
 let oaLocs = OAS.map(x => ({...x}));
 let filterZone = -1, filterArea = null; // for highlighting
 let filterFop = null, filterRegion = null; // FOP / Region filters
+
+// ===== 50-ZONE MODE DATA =====
+// The 24 existing zones remain completely intact (same names/OAs/locations).
+// 26 new zones are appended (indices 24-49) as suggested new-hire territories,
+// generated offline by proportionally splitting each existing zone's current
+// store count and finding a density-based center within it.
+const ZONE_DATA_50 = ZONE_DATA_24.concat(
+  (typeof NEW_ZONE_DEFS_50 !== 'undefined' ? NEW_ZONE_DEFS_50 : []).map(z => ({name: z.name, oa: z.oa, region: z.region, fop: z.fop}))
+);
+const TBH_INIT_50 = TBH_INIT_24.concat(typeof NEW_TBH_LOCS_50 !== 'undefined' ? NEW_TBH_LOCS_50 : []);
+
+const MODES = {
+  24: {
+    numZones: 24, tbhCount: 9,
+    zoneData: ZONE_DATA_24, tbhInit: TBH_INIT_24, zoneColors: zoneColors24,
+    targetMin: 150, targetMax: 250, strongBonus: 40,
+    storeZone: null, // filled lazily
+    hasGroundTruth: true // INITIAL_ZONES_24 represents the real current assignment
+  },
+  50: {
+    numZones: 50, tbhCount: 35,
+    zoneData: ZONE_DATA_50, tbhInit: TBH_INIT_50, zoneColors: zoneColors50,
+    targetMin: 70, targetMax: 115, strongBonus: 20,
+    storeZone: null,
+    hasGroundTruth: false // no real assignment yet — computed by Auto-Assign
+  }
+};
+
+function switchMode(mode) {
+  if (mode === CURRENT_MODE) return;
+  if (mode !== 24 && mode !== 50) return;
+  // Save current mode's live state back into its slot
+  const cur = MODES[CURRENT_MODE];
+  cur.storeZone = storeZone;
+  cur.tbhLocs = tbhLocs;
+
+  CURRENT_MODE = mode;
+  const m = MODES[mode];
+  NUM_ZONES = m.numZones;
+  TBH_COUNT = m.tbhCount;
+  ZONE_DATA = m.zoneData;
+  zoneColors = m.zoneColors;
+  tbhLocs = m.tbhLocs || m.tbhInit.map(x => ({...x}));
+  m.tbhLocs = tbhLocs;
+
+  document.getElementById('cfg-target-min').value = m.targetMin;
+  document.getElementById('cfg-target-max').value = m.targetMax;
+  document.getElementById('cfg-strong-bonus').value = m.strongBonus;
+  document.getElementById('mode-btn-24').style.background = mode === 24 ? '#1a6b3c' : '';
+  document.getElementById('mode-btn-50').style.background = mode === 50 ? '#1a6b3c' : '';
+
+  if (m.storeZone) {
+    storeZone = m.storeZone;
+    render();
+  } else if (m.hasGroundTruth) {
+    loadInitialAssignments();
+  } else {
+    // First time entering 50-zone mode: run the real auto-assign algorithm
+    // (same guardrails as 24-zone mode) to distribute stores across all 50 zones.
+    storeZone = new Int16Array(STORES.length).fill(-1);
+    render();
+    toast('Running Auto-Assign across 50 zones — this may take a moment...');
+    setTimeout(() => { runAutoAssign(); m.storeZone = storeZone; }, 50);
+  }
+  renderNewHireTable();
+  toast(`Switched to ${NUM_ZONES}-zone view`);
+}
+
+function renderNewHireTable() {
+  const tbody = document.getElementById('newhire-tbody');
+  if (!tbody) return;
+  if (typeof NEW_ZONE_DEFS_50 === 'undefined' || !NEW_ZONE_DEFS_50.length) {
+    tbody.innerHTML = '<tr><td colspan="4" style="padding:6px;color:#888">No suggestions available</td></tr>';
+    return;
+  }
+  const counts = CURRENT_MODE === 50 ? zoneCounts() : null;
+  tbody.innerHTML = NEW_ZONE_DEFS_50.map((z, i) => {
+    const zi = 24 + i;
+    const liveCount = counts ? counts[zi] : null;
+    return `<tr>
+      <td style="padding:4px;border:1px solid #333;text-align:center">${i+1}</td>
+      <td style="padding:4px;border:1px solid #333">${z.name}</td>
+      <td style="padding:4px;border:1px solid #333">${z.parentName}</td>
+      <td style="padding:4px;border:1px solid #333;text-align:center">${liveCount !== null ? liveCount : '~' + z.estCount}</td>
+    </tr>`;
+  }).join('');
+}
 
 // ===== HELPERS =====
 function haversine(lat1, lon1, lat2, lon2) {
@@ -868,9 +978,9 @@ function balanceZones() {
   }
   if (crossed.length > 0) console.log(`Phase D: corrected ${crossed.length} crossover stores`);
 
-  // Phase E: Over-capacity reduction — bring zones > 250 down
+  // Phase E: Over-capacity reduction — bring zones above target max down
   const eCounts = zoneCounts();
-  const OVER_MAX = 250;
+  const OVER_MAX = parseInt(document.getElementById('cfg-target-max').value || 250);
   for (let z = 0; z < NUM_ZONES; z++) {
     if (eCounts[z] <= OVER_MAX) continue;
     const excess = Math.min(eCounts[z] - OVER_MAX, eCounts[z] - Math.floor(STORES.length / NUM_ZONES));
@@ -1416,6 +1526,7 @@ function render() {
   renderConstraintList();
   renderAreaSplits();
   renderTBHTable();
+  renderNewHireTable();
   populateSGFilter();
   populateZoneFilters();
   updateFilterSummary();
@@ -1531,6 +1642,7 @@ function renderConfigPanel() {
   renderTBHTable();
   renderConstraintList();
   renderZoneThresholds();
+  renderNewHireTable();
   populateSGFilter();
 }
 
@@ -1918,14 +2030,20 @@ function clearAllAssignments() {
 }
 
 function loadInitialAssignments() {
-  if (typeof INITIAL_ZONES === 'undefined') {
-    toast('Initial zone data not loaded — check that initial_zones.js exists');
+  if (CURRENT_MODE === 50) {
+    // No historical ground truth for the hypothetical 50-zone plan — regenerate it
+    toast('Running Auto-Assign across 50 zones — this may take a moment...');
+    setTimeout(() => { runAutoAssign(); MODES[50].storeZone = storeZone; }, 50);
+    return;
+  }
+  if (typeof INITIAL_ZONES_24 === 'undefined') {
+    toast('Initial zone data not loaded — check that initial_zones_24.js exists');
     return;
   }
   storeZone = new Int16Array(STORES.length).fill(-1);
   let assigned = 0;
   for (let i = 0; i < STORES.length; i++) {
-    const z = INITIAL_ZONES[STORES[i].id];
+    const z = INITIAL_ZONES_24[STORES[i].id];
     if (z !== undefined && z >= 0 && z < NUM_ZONES) { storeZone[i] = z; assigned++; }
   }
   render();
@@ -2021,7 +2139,7 @@ function toast(msg) {
 document.addEventListener('DOMContentLoaded', () => {
   if (typeof STORES === 'undefined') {
     document.getElementById('total-stores').textContent = 'ERR';
-    toast('Store data not loaded. Ensure stores_data_v8.js is in the same directory.');
+    toast('Store data not loaded. Ensure stores_data.js is in the same directory.');
     return;
   }
   
@@ -2035,6 +2153,8 @@ document.addEventListener('DOMContentLoaded', () => {
       document.getElementById('map-loading').textContent = '⚠ Map error — see console';
     }
   }
+  document.getElementById('mode-btn-24').style.background = '#1a6b3c';
+  renderNewHireTable();
   loadInitialAssignments();
 });
 </script>
