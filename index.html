@@ -838,15 +838,29 @@ function balanceZones() {
     return true;
   };
 
+  // Rank cache: for each store, zones sorted by anchor distance (index 0 = nearest).
+  // Keeps rebalancing "local" — moves only flow toward anchors the store is already
+  // near, so territories stay coherent instead of hopping across the country.
+  const rankCache = new Array(STORES.length).fill(null);
+  const topRank = (si, n) => {
+    if (!rankCache[si]) {
+      const r = [];
+      for (let z = 0; z < NUM_ZONES; z++) r.push(z);
+      r.sort((a, b) => distToOA(si, a) - distToOA(si, b));
+      rankCache[si] = r;
+    }
+    return rankCache[si].slice(0, n);
+  };
+  const isLocal = (si, uz, k = 5) => topRank(si, k).includes(uz);
+
   for (let iter = 0; iter < iters; iter++) {
     setProgress(50 + Math.round(iter / (iters + 1) * 35), `Balance iteration ${iter+1}/${iters}`);
     counts = zoneCounts();
     const mean = counts.reduce((a, b) => a + b, 0) / NUM_ZONES;
     let moved = 0;
 
-    // Pass A: shed from over-capacity zones into under-capacity zones.
-    // Beyond-drive-cap receivers are allowed as a fallback (distance-penalized) so
-    // geographically isolated over-capacity zones can actually shed their excess.
+    // Pass A: shed from over-capacity zones into the nearest under-capacity LOCAL
+    // receiver (top-5 nearest anchors only) so excess stays geographically nearby.
     const over = [];
     for (let z = 0; z < NUM_ZONES; z++) if (counts[z] > cap(z)) over.push(z);
     over.sort((a, b) => (counts[b] - cap(b)) - (counts[a] - cap(a)));
@@ -854,12 +868,12 @@ function balanceZones() {
       const cands = [];
       for (let i = 0; i < STORES.length; i++) {
         if (storeZone[i] !== oz || isLockedStore(i)) continue;
-        let bestU = -1, bestScore = -Infinity;
+        let bestU = -1, bestD = Infinity;
         for (let uz = 0; uz < NUM_ZONES; uz++) {
           if (uz === oz || counts[uz] >= cap(uz)) continue;
+          if (!isLocal(i, uz)) continue;
           const d = distToOA(i, uz);
-          const score = (cap(uz) - counts[uz]) - d * 0.05;
-          if (score > bestScore) { bestScore = score; bestU = uz; }
+          if (d < bestD) { bestD = d; bestU = uz; }
         }
         if (bestU >= 0) cands.push({idx: i, toZone: bestU, curDist: distToOA(i, oz)});
       }
@@ -887,10 +901,11 @@ function balanceZones() {
         let bestU = -1, bestD = Infinity;
         for (let uz = 0; uz < NUM_ZONES; uz++) {
           if (uz === dz || counts[uz] >= mean) continue;
+          if (!isLocal(i, uz)) continue;
           const d = distToOA(i, uz);
           if (d < bestD) { bestD = d; bestU = uz; }
         }
-        if (bestU >= 0 && bestD < 500) cands.push({idx: i, toZone: bestU, curDist: distToOA(i, dz)});
+        if (bestU >= 0 && bestD < 350) cands.push({idx: i, toZone: bestU, curDist: distToOA(i, dz)});
       }
       cands.sort((a, b) => b.curDist - a.curDist);
       for (const c of cands) {
@@ -904,19 +919,20 @@ function balanceZones() {
       }
     }
 
-    // Pass C: fill zones still below target min from above-average donors, bounded to
-    // 400 mi so we never drag stores cross-country just to hit the floor.
+    // Pass C: fill zones still below target min, but ONLY with stores whose natural
+    // (nearest) zone is the under-min target and which sit within 300 mi — never drag
+    // stores across the country just to hit the floor.
     counts = zoneCounts();
     for (let uz = 0; uz < NUM_ZONES; uz++) {
       if (counts[uz] >= tMin) continue;
       const cands = [];
       for (let i = 0; i < STORES.length; i++) {
         if (storeZone[i] < 0 || storeZone[i] === uz) continue;
-        const dz = storeZone[i];
-        if (counts[dz] <= meanFloor || isLockedStore(i)) continue;
+        if (isLockedStore(i)) continue;
+        if (topRank(i, 1)[0] !== uz) continue;
         const d = distToOA(i, uz);
-        if (d > 400) continue;
-        cands.push({idx: i, fromZone: dz, dist: d});
+        if (d > 300) continue;
+        cands.push({idx: i, fromZone: storeZone[i], dist: d});
       }
       cands.sort((a, b) => a.dist - b.dist);
       for (const c of cands) {
@@ -1000,12 +1016,26 @@ function optimizeTBHLocations() {
     if (!moved) break;
   }
   
-  // Update TBH locations
+  // Update TBH locations: snap each centroid to its nearest store so the anchor sits
+  // on a real populated place, and name it after that store's city (preserving names
+  // instead of overwriting them with a bare "TBH n" label).
   for (let t = 0; t < TBH_COUNT; t++) {
     if (centroids[t].count > 0) {
-      tbhLocs[t].lat = Math.round(centroids[t].lat * 10000) / 10000;
-      tbhLocs[t].lon = Math.round(centroids[t].lon * 10000) / 10000;
-      tbhLocs[t].name = `TBH ${t+1} (${centroids[t].count} stores)`;
+      let snap = -1, snapD = Infinity;
+      for (let i = 0; i < STORES.length; i++) {
+        const d = haversine(STORES[i].lat, STORES[i].lon, centroids[t].lat, centroids[t].lon);
+        if (d < snapD) { snapD = d; snap = i; }
+      }
+      if (snap >= 0) {
+        tbhLocs[t].lat = STORES[snap].lat;
+        tbhLocs[t].lon = STORES[snap].lon;
+      } else {
+        tbhLocs[t].lat = Math.round(centroids[t].lat * 10000) / 10000;
+        tbhLocs[t].lon = Math.round(centroids[t].lon * 10000) / 10000;
+      }
+      const city = snap >= 0 && STORES[snap].city ? STORES[snap].city : `TBH ${t+1}`;
+      const st = snap >= 0 && STORES[snap].state ? STORES[snap].state : '';
+      tbhLocs[t].name = `${city}${st ? ', ' + st : ''} (${centroids[t].count} stores)`;
     }
   }
   

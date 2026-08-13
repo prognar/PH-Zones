@@ -12,52 +12,52 @@ const NEW_ZONE_DEFS_50 = [
     "fop": "Jake Stubblefield",
     "parentZone": 0,
     "parentName": "Southern California",
-    "estCount": 39
+    "estCount": 101
   },
   {
-    "name": "Ruidoso, NM (New)",
+    "name": "Albuquerque, NM (New)",
     "oa": "TBD - New Hire",
     "region": "West",
     "fop": "Jake Stubblefield",
     "parentZone": 1,
     "parentName": "Desert Southwest",
-    "estCount": 53
+    "estCount": 42
   },
   {
-    "name": "Walton, KY (New)",
+    "name": "Cincinnati, OH (New)",
     "oa": "TBD - New Hire",
     "region": "East",
     "fop": "Kelly Sharpe",
     "parentZone": 2,
     "parentName": "OH Valley West",
-    "estCount": 62
+    "estCount": 114
   },
   {
-    "name": "Slaton, TX (New)",
+    "name": "Lubbock, TX (New)",
     "oa": "TBD - New Hire",
     "region": "West",
     "fop": "Noel Pelayo",
     "parentZone": 3,
     "parentName": "North Texas",
-    "estCount": 27
+    "estCount": 36
   },
   {
-    "name": "Greenwood, LA (New)",
+    "name": "Shreveport, LA (New)",
     "oa": "TBD - New Hire",
     "region": "West",
     "fop": "Noel Pelayo",
     "parentZone": 3,
     "parentName": "North Texas",
-    "estCount": 37
+    "estCount": 85
   },
   {
-    "name": "Fort Johnson, LA (New)",
+    "name": "Alexandria, LA (New)",
     "oa": "TBD - New Hire",
     "region": "West",
     "fop": "Noel Pelayo",
     "parentZone": 4,
     "parentName": "Houston/SE Texas",
-    "estCount": 56
+    "estCount": 74
   },
   {
     "name": "College Station, TX (New)",
@@ -66,7 +66,7 @@ const NEW_ZONE_DEFS_50 = [
     "fop": "Noel Pelayo",
     "parentZone": 4,
     "parentName": "Houston/SE Texas",
-    "estCount": 29
+    "estCount": 89
   },
   {
     "name": "Pembroke Pines, FL (New)",
@@ -75,106 +75,106 @@ const NEW_ZONE_DEFS_50 = [
     "fop": "Fern Reyes",
     "parentZone": 5,
     "parentName": "Florida Gulf",
-    "estCount": 75
+    "estCount": 80
   },
   {
-    "name": "Murphy, NC (New)",
+    "name": "Knoxville, TN (New)",
     "oa": "TBD - New Hire",
     "region": "East",
     "fop": "Fern Reyes",
     "parentZone": 6,
     "parentName": "Deep South",
-    "estCount": 46
+    "estCount": 71
   },
   {
-    "name": "Perrysburg, OH (New)",
+    "name": "Toledo, OH (New)",
     "oa": "TBD - New Hire",
     "region": "East",
     "fop": "Kelly Sharpe",
     "parentZone": 7,
     "parentName": "OH Valley East",
-    "estCount": 120
+    "estCount": 112
   },
   {
-    "name": "Chester, VA (New)",
+    "name": "Richmond, VA (New)",
     "oa": "TBD - New Hire",
     "region": "East",
     "fop": "Kelly Sharpe",
     "parentZone": 8,
     "parentName": "Carolinas East",
-    "estCount": 92
+    "estCount": 103
   },
   {
-    "name": "Marysville, KS (New)",
+    "name": "Wichita, KS (New)",
     "oa": "TBD - New Hire",
     "region": "West",
     "fop": "Noel Pelayo",
     "parentZone": 9,
     "parentName": "Central Plains",
-    "estCount": 55
+    "estCount": 96
   },
   {
-    "name": "Fremont, MI (New)",
+    "name": "Grand Rapids, MI (New)",
     "oa": "TBD - New Hire",
     "region": "East",
     "fop": "Kelly Sharpe",
     "parentZone": 10,
     "parentName": "Upper Midwest",
-    "estCount": 82
+    "estCount": 113
   },
   {
-    "name": "Hamilton, MT (New)",
+    "name": "Spokane, WA (New)",
     "oa": "TBD - New Hire",
     "region": "West",
     "fop": "Jake Stubblefield",
     "parentZone": 11,
     "parentName": "Pacific Northwest",
-    "estCount": 46
+    "estCount": 74
   },
   {
-    "name": "Claremont, NH (New)",
+    "name": "Albany, NY (New)",
     "oa": "TBD - New Hire",
     "region": "East",
     "fop": "Kelly Sharpe",
     "parentZone": 12,
     "parentName": "Northeast Metro",
-    "estCount": 57
+    "estCount": 97
   },
   {
-    "name": "Byhalia, MS (New)",
+    "name": "Memphis, TN (New)",
     "oa": "TBD - New Hire",
     "region": "East",
     "fop": "Fern Reyes",
     "parentZone": 13,
     "parentName": "Mid-South",
-    "estCount": 69
+    "estCount": 84
   },
   {
-    "name": "Columbia, MS (New)",
+    "name": "New Orleans, LA (New)",
     "oa": "TBD - New Hire",
     "region": "West",
     "fop": "Noel Pelayo",
     "parentZone": 14,
     "parentName": "Gulf Coast",
-    "estCount": 108
+    "estCount": 72
   },
   {
-    "name": "Afton, WY (New)",
+    "name": "Cheyenne, WY (New)",
     "oa": "TBD - New Hire",
     "region": "West",
     "fop": "Jake Stubblefield",
     "parentZone": 15,
     "parentName": "Mountain West/Denver",
-    "estCount": 61
+    "estCount": 70
   },
   {
-    "name": "West Wendover, NV (New)",
+    "name": "Las Vegas, NV (New)",
     "oa": "TBD - New Hire",
     "region": "West",
     "fop": "Jake Stubblefield",
     "parentZone": 16,
     "parentName": "Northern California",
-    "estCount": 15
+    "estCount": 67
   },
   {
     "name": "Odessa, TX (New)",
@@ -183,25 +183,25 @@ const NEW_ZONE_DEFS_50 = [
     "fop": "Noel Pelayo",
     "parentZone": 17,
     "parentName": "San Antonio/W Texas",
-    "estCount": 22
+    "estCount": 70
   },
   {
-    "name": "Pampa, TX (New)",
+    "name": "Amarillo, TX (New)",
     "oa": "TBD - New Hire",
     "region": "West",
     "fop": "Noel Pelayo",
     "parentZone": 18,
     "parentName": "Oklahoma North",
-    "estCount": 42
+    "estCount": 43
   },
   {
-    "name": "Greenbrier, AR (New)",
+    "name": "Little Rock, AR (New)",
     "oa": "TBD - New Hire",
     "region": "East",
     "fop": "Fern Reyes",
     "parentZone": 19,
     "parentName": "Missouri/Illinois",
-    "estCount": 72
+    "estCount": 95
   },
   {
     "name": "Sioux Falls, SD (New)",
@@ -210,25 +210,25 @@ const NEW_ZONE_DEFS_50 = [
     "fop": "Jake Stubblefield",
     "parentZone": 20,
     "parentName": "Northern Plains",
-    "estCount": 59
+    "estCount": 85
   },
   {
-    "name": "Sylvania, GA (New)",
+    "name": "Savannah, GA (New)",
     "oa": "TBD - New Hire",
     "region": "East",
     "fop": "Fern Reyes",
     "parentZone": 21,
     "parentName": "Jacksonville/N Florida",
-    "estCount": 55
+    "estCount": 71
   },
   {
-    "name": "Abingdon, VA (New)",
+    "name": "Bristol, TN (New)",
     "oa": "TBD - New Hire",
     "region": "East",
     "fop": "Fern Reyes",
     "parentZone": 22,
     "parentName": "Carolinas West",
-    "estCount": 81
+    "estCount": 76
   },
   {
     "name": "Silver Spring, MD (New)",
@@ -237,7 +237,7 @@ const NEW_ZONE_DEFS_50 = [
     "fop": "Kelly Sharpe",
     "parentZone": 23,
     "parentName": "Appalachia/PA",
-    "estCount": 102
+    "estCount": 115
   }
 ];
 const NEW_TBH_LOCS_50 = [
@@ -247,29 +247,29 @@ const NEW_TBH_LOCS_50 = [
     "lon": -116.897
   },
   {
-    "name": "Ruidoso, NM (New)",
-    "lat": 33.7484,
-    "lon": -106.355
+    "name": "Albuquerque, NM (New)",
+    "lat": 35.0844,
+    "lon": -106.6504
   },
   {
-    "name": "Walton, KY (New)",
-    "lat": 38.6622,
-    "lon": -84.335
+    "name": "Cincinnati, OH (New)",
+    "lat": 39.1031,
+    "lon": -84.512
   },
   {
-    "name": "Slaton, TX (New)",
-    "lat": 33.3987,
-    "lon": -101.7866
+    "name": "Lubbock, TX (New)",
+    "lat": 33.5779,
+    "lon": -101.8552
   },
   {
-    "name": "Greenwood, LA (New)",
-    "lat": 32.57,
-    "lon": -94.2382
+    "name": "Shreveport, LA (New)",
+    "lat": 32.5252,
+    "lon": -93.7502
   },
   {
-    "name": "Fort Johnson, LA (New)",
-    "lat": 31.1885,
-    "lon": -92.9557
+    "name": "Alexandria, LA (New)",
+    "lat": 31.3113,
+    "lon": -92.4451
   },
   {
     "name": "College Station, TX (New)",
@@ -282,59 +282,59 @@ const NEW_TBH_LOCS_50 = [
     "lon": -80.538
   },
   {
-    "name": "Murphy, NC (New)",
-    "lat": 35.1191,
-    "lon": -84.0998
+    "name": "Knoxville, TN (New)",
+    "lat": 35.9606,
+    "lon": -83.9207
   },
   {
-    "name": "Perrysburg, OH (New)",
-    "lat": 41.4849,
-    "lon": -83.3854
+    "name": "Toledo, OH (New)",
+    "lat": 41.6528,
+    "lon": -83.5379
   },
   {
-    "name": "Chester, VA (New)",
-    "lat": 37.3424,
-    "lon": -77.3648
+    "name": "Richmond, VA (New)",
+    "lat": 37.5407,
+    "lon": -77.436
   },
   {
-    "name": "Marysville, KS (New)",
-    "lat": 39.8939,
-    "lon": -96.7972
+    "name": "Wichita, KS (New)",
+    "lat": 37.6872,
+    "lon": -97.3301
   },
   {
-    "name": "Fremont, MI (New)",
-    "lat": 43.346,
-    "lon": -85.8395
+    "name": "Grand Rapids, MI (New)",
+    "lat": 42.9634,
+    "lon": -85.6681
   },
   {
-    "name": "Hamilton, MT (New)",
-    "lat": 46.1256,
-    "lon": -115.5989
+    "name": "Spokane, WA (New)",
+    "lat": 47.6588,
+    "lon": -117.426
   },
   {
-    "name": "Claremont, NH (New)",
-    "lat": 43.5817,
-    "lon": -72.094
+    "name": "Albany, NY (New)",
+    "lat": 42.6526,
+    "lon": -73.7562
   },
   {
-    "name": "Byhalia, MS (New)",
-    "lat": 34.6706,
-    "lon": -89.6246
+    "name": "Memphis, TN (New)",
+    "lat": 35.1495,
+    "lon": -90.049
   },
   {
-    "name": "Columbia, MS (New)",
-    "lat": 31.1563,
-    "lon": -89.8544
+    "name": "New Orleans, LA (New)",
+    "lat": 29.9511,
+    "lon": -90.0715
   },
   {
-    "name": "Afton, WY (New)",
-    "lat": 43.0093,
-    "lon": -109.8957
+    "name": "Cheyenne, WY (New)",
+    "lat": 41.14,
+    "lon": -104.8202
   },
   {
-    "name": "West Wendover, NV (New)",
-    "lat": 40.2131,
-    "lon": -114.1512
+    "name": "Las Vegas, NV (New)",
+    "lat": 36.1699,
+    "lon": -115.1398
   },
   {
     "name": "Odessa, TX (New)",
@@ -342,14 +342,14 @@ const NEW_TBH_LOCS_50 = [
     "lon": -101.988
   },
   {
-    "name": "Pampa, TX (New)",
-    "lat": 35.7759,
-    "lon": -100.9079
+    "name": "Amarillo, TX (New)",
+    "lat": 35.222,
+    "lon": -101.8313
   },
   {
-    "name": "Greenbrier, AR (New)",
-    "lat": 35.6559,
-    "lon": -92.6364
+    "name": "Little Rock, AR (New)",
+    "lat": 34.7465,
+    "lon": -92.2896
   },
   {
     "name": "Sioux Falls, SD (New)",
@@ -357,14 +357,14 @@ const NEW_TBH_LOCS_50 = [
     "lon": -97.2315
   },
   {
-    "name": "Sylvania, GA (New)",
-    "lat": 32.738,
-    "lon": -81.6073
+    "name": "Savannah, GA (New)",
+    "lat": 32.0809,
+    "lon": -81.0912
   },
   {
-    "name": "Abingdon, VA (New)",
-    "lat": 36.5935,
-    "lon": -81.9783
+    "name": "Bristol, TN (New)",
+    "lat": 36.5951,
+    "lon": -82.1887
   },
   {
     "name": "Silver Spring, MD (New)",

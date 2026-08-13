@@ -85,13 +85,13 @@ Pipeline with a visible progress bar:
    - Groups unassigned stores by **Area**.
    - Each store in an area "votes" for its nearest zone; the highest-vote zone wins, subject to a *crossover rule* (at most `max(1, min(5, 25%))` stores may prefer a different zone) and the 200-mile drive cap.
    - Remaining strays go to the nearest zone within the drive cap (fallback: absolute nearest).
-4. **`balanceZones`** — iterative rebalancing (up to `cfg-balance-iters` passes, default 10; stops early when a pass makes no moves):
-   - **Pass A — over-capacity shed**: zones above their max donate stores to the nearest under-capacity zone. Receiver capacity is distance-penalized (`headroom − dist × 0.05`) so beyond-drive-cap receivers are allowed as a fallback — this is what lets geographically isolated over-capacity zones actually shed their excess. Stores leave farthest-first.
-   - **Pass B — mean-equalization**: zones well above the mean (`mean + 4`) donate to zones below the mean, bounded to a 500-mi receiver search. This tightens the spread instead of leaving a floor of exact-min zones. Receivers never exceed the mean.
-   - **Pass C — under-min fill**: zones still below Target Min draw from above-average donors, bounded to **400 mi** so stores are never dragged cross-country just to hit the floor.
+4. **`balanceZones`** — iterative rebalancing (up to `cfg-balance-iters` passes, default 10; stops early when a pass makes no moves). All moves are **coherence-constrained**: a store may only move toward a zone whose anchor is among its 5 nearest anchors (a cached per-store rank of anchors by distance), so rebalancing never jumps stores across the country:
+   - **Pass A — over-capacity shed**: zones above their max donate stores, farthest-first, to the *nearest under-capacity local receiver* (top-5 nearest anchors only). No more long-distance dumping into whatever zone has headroom.
+   - **Pass B — mean-equalization**: zones well above the mean (`mean + 4`) donate to zones below the mean, bounded to a **350-mi** receiver search, again local-only. This tightens the spread instead of leaving a floor of exact-min zones. Receivers never exceed the mean.
+   - **Pass C — under-min fill**: zones still below Target Min may only pull stores whose **natural (nearest) zone is the under-min target itself** and which sit within **300 mi** — never drag stores across the country just to hit the floor.
    - **Final crossover correction**: stores return to their true nearest zone when that zone has headroom and the current zone is above min — rebalancing never exceeds capacity.
    - Every move skips locked-DMA stores and skips any move that would split an Area across more than the allowed zone count (`wouldSplitArea`).
-   - **Known honest limits**: zones that are 100% locked-DMA (e.g., 0/3/4 in the 50-plan, at 177/177/161) stay at their locked size; genuinely sparse rural zones (e.g., West Wendover, Afton) may stay below Target Min and log a console warning rather than being artificially padded by cross-country steals.
+   - **Known honest limits**: zones that are 100% locked-DMA (e.g., 0/3/4 in the 50-plan) stay at their locked size; genuinely sparse rural zones may stay below Target Min and log a console warning rather than being artificially padded by cross-country steals. In the 50-plan under SOFT locks this currently leaves 4 rural zones short (Albuquerque 42, Lubbock 36, Las Vegas 67, Amarillo 43) — acceptable in exchange for coherent, non-fragmented territories (std dev 22.8, no over-cap zones).
 
 **Guardrails:**
 - 🔒 **OA home DMAs never split** (default, "Lock OA DMAs" = ABSOLUTE) — a store in an OA's home DMA cannot move to another zone.
@@ -146,10 +146,11 @@ Opened as a modal overlay. Sections:
 ### 10.2 26 New Hire Placement Suggestions (50-Zone Plan)
 - Table: `#`, `Suggested Base`, `Relieving Zone`, `Est. Stores` for each of the 26 suggested new territories. Live store counts are shown when in 50-zone mode.
 - Purpose: decide **which large cities/DMAs to hire in** — each row is a proposed new-hire anchor and the existing zone it relieves.
+- The suggested bases are **real populated cities** (`NEW_TBH_LOCS_50` in `new_zones_50.js`), e.g. Escondido, Albuquerque, Cincinnati, Lubbock, Shreveport, Alexandria LA, College Station, Pembroke Pines, Knoxville, Toledo, Richmond, Wichita, Grand Rapids, Spokane, Albany NY, Memphis, New Orleans, Cheyenne, Las Vegas, Odessa, Amarillo, Little Rock, Sioux Falls, Savannah, Bristol TN, Silver Spring — so zones form coherent territories around actual population centers instead of tiny town names.
 
 ### 10.3 TBH Zone Locations
 - Table of every TBH zone: `Zone`, `OA`, `Lat`, `Lon`, `Assigned` (all editable).
-- **🎯 Auto-Place TBH (density centers)** — runs k-means (15 iterations) over all stores to move each TBH anchor to the centroid of its natural store cluster.
+- **🎯 Auto-Place TBH (density centers)** — runs k-means (15 iterations) over all stores to move each TBH anchor to its natural store cluster, then **snaps the anchor to the nearest store in the cluster** and renames it to that store's city (e.g. `Denver, CO (89 stores)`) instead of overwriting it with a bare `TBH n` label.
 - **Apply Locations & Re-run** — commits edited lat/lon, reloads initial assignments (or re-runs Auto-Assign in 50-zone mode), and closes the panel.
 
 ### 10.4 DMA & Area Constraints
