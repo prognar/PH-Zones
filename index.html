@@ -177,12 +177,12 @@ body{font-family:system-ui,-apple-system,sans-serif;background:#111;color:#e0e0e
     <div class="cfg-section">
       <h3>⚙ Auto-Assign Algorithm</h3>
       <div style="font-size:11px;color:#888;margin-bottom:8px;padding:6px;background:#1a1a2e;border-radius:4px;border-left:3px solid #4a8">
-        <b>Guardrails (absolute):</b> 🔒 OA home DMAs = never split. Areas = max <span id="guardrail-area-max">2</span> zones. Store moves that violate these are blocked.
+        <b>Guardrails:</b> <span id="guardrail-dma">🔒 OA home DMAs = never split.</span> Areas = max <span id="guardrail-area-max">2</span> zones. Store moves that violate these are blocked.
       </div>
       <div class="cfg-row">
         <label>Lock OA DMAs</label>
-        <input type="checkbox" id="cfg-lock-dma" checked disabled>
-        <span style="color:#4a8;font-size:10px"><b>ABSOLUTE</b> — OA home DMAs cannot be split</span>
+        <input type="checkbox" id="cfg-lock-dma" checked onchange="onLockDmaToggle()">
+        <span id="cfg-lock-dma-label" style="color:#4a8;font-size:10px"><b>ABSOLUTE</b> — OA home DMAs cannot be split</span>
       </div>
       <div class="cfg-row">
         <label>Keep Areas Together</label>
@@ -600,13 +600,16 @@ function populateZoneFilters() {
   }
 }
 
+let zoneCountCache = null;
 function zoneCounts() {
   const c = new Int16Array(NUM_ZONES);
   for (let i = 0; i < storeZone.length; i++) {
     if (storeZone[i] >= 0) c[storeZone[i]]++;
   }
+  zoneCountCache = c;
   return c;
 }
+function zoneCount(z) { return zoneCountCache ? zoneCountCache[z] : 0; }
 
 function isStrong(z) { return STRONGER.includes(z); }
 function getTargetMin(z) { return parseInt(document.getElementById('cfg-target-min')?.value || 150); }
@@ -693,6 +696,18 @@ function toggleDmaLock(z) {
   if (dmaLocksDisabled.has(z)) dmaLocksDisabled.delete(z);
   else dmaLocksDisabled.add(z);
   render();
+}
+
+function onLockDmaToggle() {
+  const on = document.getElementById('cfg-lock-dma').checked;
+  document.getElementById('guardrail-dma').textContent = on
+    ? '🔒 OA home DMAs = never split.'
+    : '🔓 OA home DMAs may split into a 2nd OA when a zone exceeds its target.';
+  document.getElementById('cfg-lock-dma-label').innerHTML = on
+    ? '<b>ABSOLUTE</b> — OA home DMAs cannot be split'
+    : '<b>SOFT</b> — dense DMAs shed their excess stores to neighboring zones';
+  render();
+  toast(on ? 'DMA locks: ABSOLUTE — no DMA splitting' : 'DMA locks: SOFT — dense DMAs may split. Reset to Initial to re-run Auto-Assign.');
 }
 
 function assignAreas() {
@@ -809,224 +824,138 @@ function wouldSplitArea(si, toZone) {
 function balanceZones() {
   const iters = parseInt(document.getElementById('cfg-balance-iters').value);
   const tMin = getTargetMin();
-  
+  const total = STORES.length;
+  const meanFloor = Math.floor(total / NUM_ZONES);
+
+  const hardLocks = document.getElementById('cfg-lock-dma').checked;
+  const cap = (z) => getTargetMax(z);
+  let counts;
+  const isLockedStore = (i) => {
+    const dz = storeZone[i];
+    if (!(dz < OA_COUNT && oaDmas[dz] && STORES[i].dma === oaDmas[dz])) return false;
+    if (dmaLocksDisabled.has(dz)) return false;
+    if (!hardLocks) return counts[dz] <= cap(dz);
+    return true;
+  };
+
   for (let iter = 0; iter < iters; iter++) {
     setProgress(50 + Math.round(iter / (iters + 1) * 35), `Balance iteration ${iter+1}/${iters}`);
-    const counts = zoneCounts();
+    counts = zoneCounts();
     const mean = counts.reduce((a, b) => a + b, 0) / NUM_ZONES;
-    
-    // Phase A: Move from over-capacity zones to under-capacity zones
-    const over = [], under = [];
-    for (let z = 0; z < NUM_ZONES; z++) {
-      if (counts[z] > getTargetMax(z)) over.push(z);
-      else if (counts[z] < tMin) under.push(z);
-    }
-    
-    if (over.length > 0 && under.length > 0) {
-      for (const oz of over) {
-        const candidates = [];
-        for (let i = 0; i < STORES.length; i++) {
-          if (storeZone[i] !== oz) continue;
-          if (oz < OA_COUNT && oaDmas[oz] && STORES[i].dma === oaDmas[oz]) continue;
-          
-          let bestU = -1, bestD = Infinity;
-          for (const uz of under) {
-            if (counts[uz] >= getTargetMax(uz)) continue;
-            if (!withinCap(i, uz)) continue;
-            const d = distToOA(i, uz);
-            if (d < bestD) { bestD = d; bestU = uz; }
-          }
-          if (bestU >= 0) candidates.push({idx: i, toZone: bestU, dist: bestD});
-        }
-        candidates.sort((a, b) => a.dist - b.dist);
-        const toMove = Math.min(candidates.length, counts[oz] - getTargetMax(oz));
-        let movedA = 0;
-        for (let c = 0; c < candidates.length && movedA < toMove; c++) {
-          if (wouldSplitArea(candidates[c].idx, candidates[c].toZone)) continue;
-          storeZone[candidates[c].idx] = candidates[c].toZone;
-          counts[oz]--;
-          counts[candidates[c].toZone]++;
-          movedA++;
-        }
-      }
-    }
-    
-    // Phase B: Move from above-mean donors to under-capacity zones
-    const counts2 = zoneCounts();
-    const under2 = [];
-    for (let z = 0; z < NUM_ZONES; z++) if (counts2[z] < tMin) under2.push(z);
-    if (under2.length === 0) break;
-    
-    // Any zone above the mean can donate
-    const donors = [];
-    for (let z = 0; z < NUM_ZONES; z++) {
-      if (counts2[z] > mean) donors.push(z);
-    }
-    if (donors.length === 0) break;
-    
-    for (const uz of under2) {
-      const needed = tMin - counts2[uz];
-      if (needed <= 0) continue;
-      
-      const allCandidates = [];
-      for (const dz of donors) {
-        if (counts2[dz] <= Math.floor(mean)) continue;
-        for (let i = 0; i < STORES.length; i++) {
-          if (storeZone[i] !== dz) continue;
-          if (dz < OA_COUNT && oaDmas[dz] && STORES[i].dma === oaDmas[dz]) continue;
-          if (!withinCap(i, uz)) continue;
+    let moved = 0;
+
+    // Pass A: shed from over-capacity zones into under-capacity zones.
+    // Beyond-drive-cap receivers are allowed as a fallback (distance-penalized) so
+    // geographically isolated over-capacity zones can actually shed their excess.
+    const over = [];
+    for (let z = 0; z < NUM_ZONES; z++) if (counts[z] > cap(z)) over.push(z);
+    over.sort((a, b) => (counts[b] - cap(b)) - (counts[a] - cap(a)));
+    for (const oz of over) {
+      const cands = [];
+      for (let i = 0; i < STORES.length; i++) {
+        if (storeZone[i] !== oz || isLockedStore(i)) continue;
+        let bestU = -1, bestScore = -Infinity;
+        for (let uz = 0; uz < NUM_ZONES; uz++) {
+          if (uz === oz || counts[uz] >= cap(uz)) continue;
           const d = distToOA(i, uz);
-          allCandidates.push({idx: i, fromZone: dz, dist: d});
+          const score = (cap(uz) - counts[uz]) - d * 0.05;
+          if (score > bestScore) { bestScore = score; bestU = uz; }
         }
+        if (bestU >= 0) cands.push({idx: i, toZone: bestU, curDist: distToOA(i, oz)});
       }
-      allCandidates.sort((a, b) => a.dist - b.dist);
-      
-      let moved = 0;
-      for (const cand of allCandidates) {
-        if (moved >= needed) break;
-        const dz = cand.fromZone;
-        if (counts2[dz] <= Math.floor(mean)) continue;
-        if (wouldSplitArea(cand.idx, uz)) continue;
-        storeZone[cand.idx] = uz;
-        counts2[uz]++;
-        counts2[dz]--;
+      cands.sort((a, b) => b.curDist - a.curDist);
+      for (const c of cands) {
+        if (counts[oz] <= cap(oz)) break;
+        if (counts[c.toZone] >= cap(c.toZone)) continue;
+        if (wouldSplitArea(c.idx, c.toZone)) continue;
+        storeZone[c.idx] = c.toZone;
+        counts[oz]--;
+        counts[c.toZone]++;
         moved++;
       }
     }
-  }
-  
-  // Phase C: Force-fill any zone still below 150 (tiered to minimize crossover)
-  const final = zoneCounts();
-  const stillUnder = [];
-  for (let z = 0; z < NUM_ZONES; z++) if (final[z] < tMin) stillUnder.push(z);
-  if (stillUnder.length > 0) {
-    const meanFloor = Math.floor(STORES.length / NUM_ZONES);
-    for (const uz of stillUnder) {
-      let needed = tMin - final[uz];
-      if (needed <= 0) continue;
-      // Helper: gather candidates with optional filters
-      const gather = (capOnly, nearestOnly) => {
-        const c = [];
-        for (let i = 0; i < STORES.length; i++) {
-          if (storeZone[i] < 0) continue;
-          if (storeZone[i] === uz) continue;
-          const dz = storeZone[i];
-          if (dz < OA_COUNT && oaDmas[dz] && STORES[i].dma === oaDmas[dz]) continue;
-          if (final[dz] <= meanFloor) continue;
-          if (capOnly && !withinCap(i, uz)) continue;
-          if (nearestOnly && nearestOA(i).zone !== uz) continue;
-          c.push({idx: i, fromZone: dz, dist: distToOA(i, uz)});
+
+    // Pass B: mean-equalization — zones well above the mean donate to zones well below,
+    // tightening the spread. Locked-DMA stores never move; receivers never exceed the mean.
+    counts = zoneCounts();
+    const high = mean + 4;
+    for (let dz = 0; dz < NUM_ZONES; dz++) {
+      if (counts[dz] <= high) continue;
+      const cands = [];
+      for (let i = 0; i < STORES.length; i++) {
+        if (storeZone[i] !== dz || isLockedStore(i)) continue;
+        let bestU = -1, bestD = Infinity;
+        for (let uz = 0; uz < NUM_ZONES; uz++) {
+          if (uz === dz || counts[uz] >= mean) continue;
+          const d = distToOA(i, uz);
+          if (d < bestD) { bestD = d; bestU = uz; }
         }
-        c.sort((a, b) => a.dist - b.dist);
-        return c;
-      };
-      // Tier 1: within cap AND nearest zone is target
-      let candidates = gather(true, true);
-      // Tier 2: within cap (any nearest zone)
-      if (candidates.length < needed) {
-        const more = gather(true, false);
-        // Add new candidates not already in tier 1
-        const seen = new Set(candidates.map(x => x.idx));
-        for (const m of more) if (!seen.has(m.idx)) candidates.push(m);
+        if (bestU >= 0 && bestD < 500) cands.push({idx: i, toZone: bestU, curDist: distToOA(i, dz)});
       }
-      // Tier 3: ignore cap entirely (original behavior)
-      if (candidates.length < needed) {
-        const more = gather(false, false);
-        const seen = new Set(candidates.map(x => x.idx));
-        for (const m of more) if (!seen.has(m.idx)) candidates.push(m);
-      }
-      let moved = 0;
-      for (const cand of candidates) {
-        if (moved >= needed) break;
-        const dz = cand.fromZone;
-        if (final[dz] <= meanFloor) continue;
-        if (wouldSplitArea(cand.idx, uz)) continue;
-        storeZone[cand.idx] = uz;
-        final[uz]++;
-        final[dz]--;
+      cands.sort((a, b) => b.curDist - a.curDist);
+      for (const c of cands) {
+        if (counts[dz] <= high) break;
+        if (counts[c.toZone] >= mean) continue;
+        if (wouldSplitArea(c.idx, c.toZone)) continue;
+        storeZone[c.idx] = c.toZone;
+        counts[dz]--;
+        counts[c.toZone]++;
         moved++;
       }
     }
-    const still = zoneCounts().filter(c => c < tMin).length;
-    if (still > 0) console.warn(`${still} zones still below ${tMin} stores after force-fill`);
+
+    // Pass C: fill zones still below target min from above-average donors, bounded to
+    // 400 mi so we never drag stores cross-country just to hit the floor.
+    counts = zoneCounts();
+    for (let uz = 0; uz < NUM_ZONES; uz++) {
+      if (counts[uz] >= tMin) continue;
+      const cands = [];
+      for (let i = 0; i < STORES.length; i++) {
+        if (storeZone[i] < 0 || storeZone[i] === uz) continue;
+        const dz = storeZone[i];
+        if (counts[dz] <= meanFloor || isLockedStore(i)) continue;
+        const d = distToOA(i, uz);
+        if (d > 400) continue;
+        cands.push({idx: i, fromZone: dz, dist: d});
+      }
+      cands.sort((a, b) => a.dist - b.dist);
+      for (const c of cands) {
+        if (counts[uz] >= tMin) break;
+        if (counts[c.fromZone] <= meanFloor) continue;
+        if (wouldSplitArea(c.idx, uz)) continue;
+        storeZone[c.idx] = uz;
+        counts[uz]++;
+        counts[c.fromZone]--;
+        moved++;
+      }
+    }
+
+    if (moved === 0) break;
   }
 
-  // Phase D: Crossover correction — move stores assigned to a non-nearest zone back
-  const dCounts = zoneCounts();
-  const dTargetMax = getTargetMax();
-  // Build list of stores that are in the wrong zone
+  // Final crossover correction: return stores to their true nearest zone when that zone
+  // has headroom and the current zone can afford to lose them. Never exceeds capacity.
+  counts = zoneCounts();
   const crossed = [];
   for (let i = 0; i < STORES.length; i++) {
-    if (storeZone[i] < 0) continue;
+    if (storeZone[i] < 0 || isLockedStore(i)) continue;
     const cz = storeZone[i];
     const nn = nearestOA(i);
-    if (nn.zone === cz) continue;
-    if (cz < OA_COUNT && oaDmas[cz] && STORES[i].dma === oaDmas[cz]) continue;
-    if (dCounts[nn.zone] >= dTargetMax) continue;
-    if (!withinCap(i, nn.zone)) continue;
-    const curDist = distToOA(i, cz);
-    crossed.push({idx: i, curZone: cz, bestZone: nn.zone, savings: curDist - nn.dist});
+    if (nn.zone === cz || counts[nn.zone] >= cap(nn.zone)) continue;
+    if (counts[cz] <= tMin) continue;
+    crossed.push({idx: i, toZone: nn.zone, savings: distToOA(i, cz) - nn.dist});
   }
   crossed.sort((a, b) => b.savings - a.savings);
   for (const x of crossed) {
-    if (dCounts[x.bestZone] >= dTargetMax) continue;
-    if (dCounts[x.curZone] <= tMin) continue;
-    if (wouldSplitArea(x.idx, x.bestZone)) continue;
-    storeZone[x.idx] = x.bestZone;
-    dCounts[x.bestZone]++;
-    dCounts[x.curZone]--;
+    const cz = storeZone[x.idx];
+    if (counts[x.toZone] >= cap(x.toZone) || counts[cz] <= tMin) continue;
+    if (wouldSplitArea(x.idx, x.toZone)) continue;
+    storeZone[x.idx] = x.toZone;
+    counts[x.toZone]++;
+    counts[cz]--;
   }
-  if (crossed.length > 0) console.log(`Phase D: corrected ${crossed.length} crossover stores`);
-
-  // Phase E: Over-capacity reduction — bring zones above target max down
-  const eCounts = zoneCounts();
-  const OVER_MAX = parseInt(document.getElementById('cfg-target-max').value || 250);
-  for (let z = 0; z < NUM_ZONES; z++) {
-    if (eCounts[z] <= OVER_MAX) continue;
-    const excess = Math.min(eCounts[z] - OVER_MAX, eCounts[z] - Math.floor(STORES.length / NUM_ZONES));
-    if (excess <= 0) continue;
-    const candidates = [];
-    for (let i = 0; i < STORES.length; i++) {
-      if (storeZone[i] !== z) continue;
-      if (z < OA_COUNT && oaDmas[z] && STORES[i].dma === oaDmas[z]) continue;
-      const curDist = distToOA(i, z);
-      // Skip stores very close to the OA (they should stay)
-      if (curDist < 30) continue;
-      const nn = nearestOA(i);
-      let bestAlt = -1, bestAltD = Infinity;
-      if (nn.zone !== z && eCounts[nn.zone] < dTargetMax && withinCap(i, nn.zone)) {
-        bestAlt = nn.zone;
-        bestAltD = nn.dist;
-      } else {
-        // Search all zones for the best alternative
-        for (let az = 0; az < NUM_ZONES; az++) {
-          if (az === z) continue;
-          if (eCounts[az] >= dTargetMax) continue;
-          if (!withinCap(i, az)) continue;
-          const d = distToOA(i, az);
-          if (d < bestAltD) { bestAltD = d; bestAlt = az; }
-        }
-      }
-      if (bestAlt < 0) continue;
-      // Accept if alternative is not unreasonably farther
-      // (within 50% more distance, or if current OA is beyond cap)
-      if (bestAltD > curDist * 1.5 && curDist < DRIVE_CAP) continue;
-      candidates.push({idx: i, toZone: bestAlt, curDist: curDist, altDist: bestAltD});
-    }
-    // Sort by largest distance from current OA first (farthest stores leave first)
-    candidates.sort((a, b) => b.curDist - a.curDist);
-    let moved = 0;
-    for (const c of candidates) {
-      if (moved >= excess) break;
-      if (eCounts[c.toZone] >= dTargetMax) continue;
-      if (wouldSplitArea(c.idx, c.toZone)) continue;
-      storeZone[c.idx] = c.toZone;
-      eCounts[z]--;
-      eCounts[c.toZone]++;
-      moved++;
-    }
-    if (moved > 0) console.log(`Phase E: moved ${moved} stores out of ${zoneName(z)} (${eCounts[z]} remaining)`);
-  }
+  const stillUnder = zoneCounts().filter(c => c < tMin).length;
+  if (stillUnder > 0) console.warn(`${stillUnder} zones still below ${tMin} stores (sparse rural zones that cannot be filled without unreasonable cross-country moves)`);
 }
 
 // ===== TBH OPTIMIZATION =====
@@ -1589,16 +1518,20 @@ function updateStats() {
   document.getElementById('total-stores').textContent = STORES.length;
   document.getElementById('assigned-count').textContent = assigned;
   
-  // Count locked DMA stores
+  const counts = zoneCounts();
+  // Count locked DMA stores (in soft mode, only those the OA keeps, i.e. zone <= target max)
   let lockedCount = 0;
+  const cfgLockOn = document.getElementById('cfg-lock-dma').checked;
   if (oaDmas && oaDmas.length > 0) {
-    const oaDmaSet = new Set(oaDmas.filter(x => x));
+    const oaDmaSet = new Set();
+    for (let oz = 0; oz < OA_COUNT; oz++) if (oaDmas[oz] && !dmaLocksDisabled.has(oz)) oaDmaSet.add(oaDmas[oz]);
     for (let i = 0; i < STORES.length; i++) {
-      if (oaDmaSet.has(STORES[i].dma) && storeZone[i] >= 0) lockedCount++;
+      if (!oaDmaSet.has(STORES[i].dma) || storeZone[i] < 0) continue;
+      if (!cfgLockOn && counts[storeZone[i]] > getTargetMax(storeZone[i])) continue;
+      lockedCount++;
     }
   }
-  
-  const counts = zoneCounts();
+
   const mean = assigned / NUM_ZONES;
   let varSum = 0;
   for (let z = 0; z < NUM_ZONES; z++) varSum += (counts[z] - mean) ** 2;
@@ -1626,7 +1559,10 @@ function updateStats() {
   const htmlParts = [];
   if (over || under) htmlParts.push(`<span style="color:#f88">Over: ${over}</span>`, `<span style="color:#8cf">Under: ${under}</span>`);
   else htmlParts.push('✅ Balanced');
-  if (dmaViolations > 0) htmlParts.push(`<span style="color:#f44">⚠ ${dmaViolations} DMA split(s)</span>`);
+  if (dmaViolations > 0) {
+    if (cfgLockOn) htmlParts.push(`<span style="color:#f44">⚠ ${dmaViolations} DMA split(s)</span>`);
+    else htmlParts.push(`<span style="color:#fa0">🔓 ${dmaViolations} DMA(s) split across zones</span>`);
+  }
   htmlParts.push(`<span style="color:#888">🔒 ${lockedCount} locked</span>`);
   document.getElementById('over-under').innerHTML = htmlParts.join(' | ');
 }
@@ -1667,11 +1603,13 @@ function renderConstraintList() {
   const el = document.getElementById('constraint-list');
   if (!oaDmas || oaDmas.length === 0) { el.innerHTML = '<div style="color:#888;font-size:11px">Run Auto-Assign to see DMA constraints</div>'; return; }
   
+  const cfgLockOn = document.getElementById('cfg-lock-dma').checked;
   // Show OA-locked DMAs
-  let html = '<div style="font-weight:600;font-size:11px;margin-bottom:4px">Locked DMAs (OA home):</div>';
+  let html = `<div style="font-weight:600;font-size:11px;margin-bottom:4px">${cfgLockOn ? 'Locked' : 'Kept (soft lock)'} DMAs (OA home):</div>`;
   for (let oz = 0; oz < OA_COUNT; oz++) {
     if (oaDmas[oz]) {
-      html += `<div class="constraint-row locked">${zoneName(oz)} → ${oaDmas[oz]} (locked)</div>`;
+      const state = dmaLocksDisabled.has(oz) ? 'unlocked' : (cfgLockOn ? 'locked' : 'kept');
+      html += `<div class="constraint-row ${state === 'unlocked' ? 'partial' : 'locked'}">${zoneName(oz)} → ${oaDmas[oz]} (${state})</div>`;
     }
   }
   
@@ -1684,7 +1622,7 @@ function renderConstraintList() {
     if (storeZone[i] >= 0) dmaStatus[d].zones.add(storeZone[i]);
   }
   
-  // Check if any OA-locked DMA has stores in other zones (error condition)
+  // Show DMAs whose stores span multiple zones
   const oaDmaSet = new Set(oaDmas.filter(x => x));
   html += '<div style="font-weight:600;font-size:11px;margin:8px 0 4px">DMA Split Status:</div>';
   let dmaCount = 0;
@@ -1693,8 +1631,10 @@ function renderConstraintList() {
     if (info.zones.size > 1) {
       const zoneList = Array.from(info.zones).map(z => `${z+1}`).join(', ');
       const isLocked = oaDmaSet.has(dma);
+      const icon = isLocked ? (cfgLockOn ? '🔒' : '🔓') : '⚡';
+      const note = cfgLockOn && isLocked ? ' ⚠️ LOCKED DMA SPLIT!' : '';
       html += `<div class="constraint-row ${isLocked ? 'locked' : 'partial'}">
-        ${isLocked ? '🔒' : '⚡'} ${dma}: ${info.count} stores → Zones ${zoneList}${isLocked ? ' ⚠️ LOCKED DMA SPLIT!' : ''}
+        ${icon} ${dma}: ${info.count} stores → Zones ${zoneList}${note}
       </div>`;
       dmaCount++;
     }
@@ -1966,10 +1906,16 @@ function populateSGFilter() {
 function isDmaLocked(storeIdx) {
   if (!oaDmas || oaDmas.length === 0) return false;
   const dma = STORES[storeIdx].dma;
+  let owner = -1;
   for (let oz = 0; oz < OA_COUNT; oz++) {
-    if (oaDmas[oz] === dma && !dmaLocksDisabled.has(oz)) return true;
+    if (oaDmas[oz] === dma && !dmaLocksDisabled.has(oz)) { owner = oz; break; }
   }
-  return false;
+  if (owner < 0) return false;
+  if (document.getElementById('cfg-lock-dma').checked) return true;
+  // Soft lock (shed-when-over): the OA keeps its home-DMA stores only while its zone
+  // is at or below its target max; the dense excess is free to be rebalanced away.
+  const z = storeZone[storeIdx];
+  return z >= 0 && zoneCount(z) <= getTargetMax(z);
 }
 
 function generateSuggestions() {
