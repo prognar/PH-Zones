@@ -87,8 +87,8 @@ Pipeline with a visible progress bar:
    - Remaining strays go to the nearest zone within the drive cap (fallback: absolute nearest).
 4. **`balanceZones`** — iterative rebalancing (up to `cfg-balance-iters` passes, default 10; stops early when a pass makes no moves). All moves are **coherence-constrained**: a store may only move toward a zone whose anchor is among its 5 nearest anchors (a cached per-store rank of anchors by distance), so rebalancing never jumps stores across the country:
    - **Pass A — over-capacity shed**: zones above their max donate stores, farthest-first, to the *nearest under-capacity local receiver* (top-5 nearest anchors only). No more long-distance dumping into whatever zone has headroom.
-   - **Pass B — mean-equalization**: zones well above the mean (`mean + 4`) donate to zones below the mean, bounded to a **350-mi** receiver search, again local-only. This tightens the spread instead of leaving a floor of exact-min zones. Receivers never exceed the mean.
-   - **Pass C — under-min fill**: zones still below Target Min may only pull stores whose **natural (nearest) zone is the under-min target itself** and which sit within **300 mi** — never drag stores across the country just to hit the floor.
+   - **Pass B — mean-equalization**: zones well above the mean (`mean + 2`) donate to zones below the mean, bounded to a **400-mi** receiver search, again local-only. This tightens the spread instead of leaving a floor of exact-min zones. Receivers never exceed the mean.
+   - **Pass C — under-min fill**: zones still below Target Min may only pull stores whose **natural (nearest) zone is the under-min target itself** and which sit within **350 mi** — never drag stores across the country just to hit the floor.
    - **Final crossover correction**: stores return to their true nearest zone when that zone has headroom and the current zone is above min — rebalancing never exceeds capacity.
    - Every move skips locked-DMA stores and skips any move that would split an Area across more than the allowed zone count (`wouldSplitArea`).
    - **Known honest limits**: zones that are 100% locked-DMA (e.g., 0/3/4 in the 50-plan) stay at their locked size; genuinely sparse rural zones may stay below Target Min and log a console warning rather than being artificially padded by cross-country steals. In the 50-plan under SOFT locks this currently leaves 4 rural zones short (Albuquerque 42, Lubbock 36, Las Vegas 67, Amarillo 43) — acceptable in exchange for coherent, non-fragmented territories (std dev 22.8, no over-cap zones).
@@ -133,7 +133,7 @@ Opened as a modal overlay. Sections:
 
 ### 10.1 Auto-Assign Algorithm
 - **Guardrail banner**: shows the two absolute rules — 🔒 OA home DMAs never split; Areas max **2** zones.
-- **Lock OA DMAs** (checkbox, default **checked**): when ON (**ABSOLUTE**), OA home DMAs can never be split. When OFF (**SOFT**), a dense DMA sheds its excess — an OA keeps its home-DMA stores only while its zone is at/below its target max, and the over-capacity excess is rebalanced into neighboring/under-capacity zones. Toggling updates the guardrail banner and constraint list; hit **↺ Reset to Initial** to re-run Auto-Assign under the new rule.
+- **Lock OA DMAs** (checkbox, default **checked** in 24-mode, **unchecked** in 50-mode): when ON (**ABSOLUTE**), OA home DMAs can never be split. When OFF (**SOFT**), a dense DMA sheds its excess — an OA keeps its home-DMA stores only while its zone is at/below its target max, and the over-capacity excess is rebalanced into neighboring/under-capacity zones. In 50-mode, DMA locks are automatically disabled since dense DMAs (LA, Dallas, NYC) may need multiple zones. Toggling updates the guardrail banner and constraint list; hit **↺ Reset to Initial** to re-run Auto-Assign under the new rule.
 - **Keep Areas Together** (checkbox, default on): when checked, the area-split guardrail is enforced and enables the "Area Max Zones" control.
 - **Area Max Zones** (select: `1 zone` / `2 zones`): how many zones an Area may span. Displayed value updates the guardrail banner.
 - **Balance Iterations** (number, default 10, 0–30): how many rebalancing passes `balanceZones` runs.
@@ -146,27 +146,40 @@ Opened as a modal overlay. Sections:
 ### 10.2 26 New Hire Placement Suggestions (50-Zone Plan)
 - Table: `#`, `Suggested Base`, `Relieving Zone`, `Est. Stores` for each of the 26 suggested new territories. Live store counts are shown when in 50-zone mode.
 - Purpose: decide **which large cities/DMAs to hire in** — each row is a proposed new-hire anchor and the existing zone it relieves.
-- The suggested bases are **real populated cities** (`NEW_TBH_LOCS_50` in `new_zones_50.js`), e.g. Escondido, Albuquerque, Cincinnati, Lubbock, Shreveport, Alexandria LA, College Station, Pembroke Pines, Knoxville, Toledo, Richmond, Wichita, Grand Rapids, Spokane, Albany NY, Memphis, New Orleans, Cheyenne, Las Vegas, Odessa, Amarillo, Little Rock, Sioux Falls, Savannah, Bristol TN, Silver Spring — so zones form coherent territories around actual population centers instead of tiny town names.
+- The suggested bases are **real populated cities** (`NEW_TBH_LOCS_50` in `new_zones_50.js`), e.g. San Diego, Albuquerque, Cincinnati, Lubbock, Shreveport, Lafayette LA, College Station, Fort Myers, Knoxville, Toledo, Richmond, Wichita, Grand Rapids, Spokane, Albany NY, Memphis, New Orleans, Cheyenne, Las Vegas, Odessa, Amarillo, Little Rock, Sioux Falls, Savannah, Asheville NC, Silver Spring — so zones form coherent territories around actual population centers instead of tiny town names.
 
 ### 10.3 TBH Zone Locations
 - Table of every TBH zone: `Zone`, `OA`, `Lat`, `Lon`, `Assigned` (all editable).
 - **🎯 Auto-Place TBH (density centers)** — runs k-means (15 iterations) over all stores to move each TBH anchor to its natural store cluster, then **snaps the anchor to the nearest store in the cluster** and renames it to that store's city (e.g. `Denver, CO (89 stores)`) instead of overwriting it with a bare `TBH n` label.
 - **Apply Locations & Re-run** — commits edited lat/lon, reloads initial assignments (or re-runs Auto-Assign in 50-zone mode), and closes the panel.
 
-### 10.4 DMA & Area Constraints
+### 10.4 Zone Transition (15→24)
+- **Purpose**: Incrementally activate TBH zones as new OAs come online, transitioning from 15 to 24 zones.
+- **Status display**: Shows current zone count (e.g., "18 of 24 zones active").
+- **Zone table**: Lists all 9 TBH zones (indices 15-23) with:
+  - Zone name and OA name
+  - Status: Active (with store count) or Pending
+  - Action button: Activate (for pending) or Deactivate (for active)
+- **Activate**: When activated, stores are carved from their current zones based on the 24-zone plan (`INITIAL_ZONES_24`). Shows toast with details of which zones stores were moved from.
+- **Deactivate**: Moves stores from the deactivated zone to their nearest active zone.
+- **Reset to 15 Zones**: Reloads original 15-zone assignments from `Alignments - 15 zones.csv`.
+- **Activate All Pending**: Activates all remaining TBH zones at once.
+- **Data source**: Original 15-zone assignments loaded from `Alignments - 15 zones.csv` on startup.
+
+### 10.5 DMA & Area Constraints
 - **Locked DMAs (OA home)**: green rows showing each OA's home DMA (🔒 locked).
 - **DMA Split Status**: yellow ⚡ rows for any DMA whose stores span multiple zones (flagged ⚠️ if it's a locked OA home DMA — a hard violation).
 - Toggle a lock on/off from a zone card (🔒/🔓) to allow a specific OA's DMA to be split.
 
-### 10.5 Split Areas
+### 10.6 Split Areas
 - List of every area currently split across 2+ zones, with `N stores: X in Z1, Y in Z2, ...` counts. Clicking a row opens its area detail. ⚠ DMA conflict hint shown when an area's stores are locked to different DMAs.
 
-### 10.6 Move Suggestions
+### 10.7 Move Suggestions
 - **Suggest moves for** dropdown (All Zones or a specific zone).
 - **Generate Suggestions** — finds stores in over-capacity zones that are closest to under-capacity zones and lists up to 10 moves per zone, sorted by distance.
 - Clicking a suggestion (or its **Move** button) applies it **with guardrail enforcement**: it is blocked if the move would split an Area across more than the allowed zones.
 
-### 10.7 Zone Thresholds
+### 10.8 Zone Thresholds
 - Per-zone table: `Zone`, `Color` (click the swatch to change the zone's map color), `Max` (effective target incl. Strong bonus), `Strong` (checkbox per OA zone).
 - Marking an OA as **Strong** raises its max by the Strong OA Bonus.
 

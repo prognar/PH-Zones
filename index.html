@@ -174,6 +174,12 @@ body{font-family:system-ui,-apple-system,sans-serif;background:#111;color:#e0e0e
     <button class="close" onclick="toggleConfig()">✕</button>
     <h2>Configuration</h2>
 
+    <div style="display:flex;gap:4px;margin-bottom:12px;border-bottom:1px solid #333;padding-bottom:8px">
+      <button class="topbtn" id="cfg-tab-24" onclick="switchConfigTab(24)" style="background:#1a6b3c">24-Zone Mode</button>
+      <button class="topbtn" id="cfg-tab-50" onclick="switchConfigTab(50)">50-Zone Mode</button>
+    </div>
+
+    <div id="cfg-tab-content-24">
     <div class="cfg-section">
       <h3>⚙ Auto-Assign Algorithm</h3>
       <div style="font-size:11px;color:#888;margin-bottom:8px;padding:6px;background:#1a1a2e;border-radius:4px;border-left:3px solid #4a8">
@@ -215,24 +221,18 @@ body{font-family:system-ui,-apple-system,sans-serif;background:#111;color:#e0e0e
       </div>
     </div>
 
-    <div class="cfg-section" id="new-hire-section">
-      <h3>🆕 26 New Hire Placement Suggestions (50-Zone Plan)</h3>
-      <p style="font-size:11px;color:#888;margin-bottom:8px">Each existing zone was split proportionally to its current store count (target ~94 stores/zone at 50 total). These are the suggested new territory centers — switch to 50-Zone mode and click Auto-Assign to see the full rebalanced map.</p>
-      <table id="newhire-table" style="width:100%;border-collapse:collapse;font-size:11px">
-        <thead><tr><th style="padding:4px;border:1px solid #333;background:#2a2a4e;color:#8cf">#</th><th style="padding:4px;border:1px solid #333;background:#2a2a4e;color:#8cf">Suggested Base</th><th style="padding:4px;border:1px solid #333;background:#2a2a4e;color:#8cf">Relieving Zone</th><th style="padding:4px;border:1px solid #333;background:#2a2a4e;color:#8cf">Est. Stores</th></tr></thead>
-        <tbody id="newhire-tbody"></tbody>
+    <div class="cfg-section" id="transition-section">
+      <h3>📋 Zone Transition (15→24)</h3>
+      <p style="font-size:11px;color:#888;margin-bottom:8px">Activate new zones as OAs come online. Each activation carves stores from existing zones based on the 24-zone plan.</p>
+      <div id="transition-status" style="font-size:12px;color:#8cf;margin-bottom:8px;padding:6px;background:#1a1a2e;border-radius:4px;border-left:3px solid #4a8"></div>
+      <table id="transition-table" style="width:100%;border-collapse:collapse;font-size:11px">
+        <thead><tr><th style="padding:4px;border:1px solid #333;background:#2a2a4e;color:#8cf">Zone</th><th style="padding:4px;border:1px solid #333;background:#2a2a4e;color:#8cf">OA</th><th style="padding:4px;border:1px solid #333;background:#2a2a4e;color:#8cf">Status</th><th style="padding:4px;border:1px solid #333;background:#2a2a4e;color:#8cf">Action</th></tr></thead>
+        <tbody id="transition-tbody"></tbody>
       </table>
-    </div>
-
-    <div class="cfg-section">
-      <h3>TBH Zone Locations</h3>
-      <p style="font-size:11px;color:#888;margin-bottom:8px" id="tbh-desc">Set locations for the To-Be-Hired / new-hire zones. Place in densely populated store areas.</p>
-      <table id="tbh-table">
-        <thead><tr><th>Zone</th><th>OA</th><th>Lat</th><th>Lon</th><th>Assigned</th></tr></thead>
-        <tbody id="tbh-tbody"></tbody>
-      </table>
-      <button class="topbtn warning" onclick="optimizeTBHLocations()" style="margin-top:8px">🎯 Auto-Place TBH (density centers)</button>
-      <button class="topbtn" onclick="applyTBHLocations()" style="margin-top:4px">Apply Locations & Re-run</button>
+      <div style="margin-top:8px;display:flex;gap:6px">
+        <button class="topbtn" onclick="resetTransition()">↺ Reset to 15 Zones</button>
+        <button class="topbtn primary" onclick="activateAllPending()">▶ Activate All Pending</button>
+      </div>
     </div>
 
     <div class="cfg-section">
@@ -260,6 +260,34 @@ body{font-family:system-ui,-apple-system,sans-serif;background:#111;color:#e0e0e
       <h3>Zone Thresholds</h3>
       <div id="zone-thresholds" style="max-height:300px;overflow-y:auto"></div>
     </div>
+    </div>
+
+    <div id="cfg-tab-content-50" style="display:none">
+    <div class="cfg-section" id="new-hire-section">
+      <h3>🆕 26 New Hire Placement Suggestions (50-Zone Plan)</h3>
+      <p style="font-size:11px;color:#888;margin-bottom:8px">Each existing zone was split proportionally to its current store count (target ~94 stores/zone at 50 total). These are the suggested new territory centers — switch to 50-Zone mode and click Auto-Assign to see the full rebalanced map.</p>
+      <table id="newhire-table" style="width:100%;border-collapse:collapse;font-size:11px">
+        <thead><tr><th style="padding:4px;border:1px solid #333;background:#2a2a4e;color:#8cf">#</th><th style="padding:4px;border:1px solid #333;background:#2a2a4e;color:#8cf">Suggested Base</th><th style="padding:4px;border:1px solid #333;background:#2a2a4e;color:#8cf">Relieving Zone</th><th style="padding:4px;border:1px solid #333;background:#2a2a4e;color:#8cf">Est. Stores</th></tr></thead>
+        <tbody id="newhire-tbody"></tbody>
+      </table>
+    </div>
+
+    <div class="cfg-section">
+      <h3>TBH Zone Locations (50-Zone)</h3>
+      <p style="font-size:11px;color:#888;margin-bottom:8px" id="tbh-desc">Set locations for the 50-zone plan anchors. Place in densely populated store areas.</p>
+      <table id="tbh-table">
+        <thead><tr><th>Zone</th><th>OA</th><th>Lat</th><th>Lon</th><th>Assigned</th></tr></thead>
+        <tbody id="tbh-tbody"></tbody>
+      </table>
+      <button class="topbtn warning" onclick="optimizeTBHLocations()" style="margin-top:8px">🎯 Auto-Place TBH (density centers)</button>
+      <button class="topbtn" onclick="applyTBHLocations()" style="margin-top:4px">Apply Locations & Re-run</button>
+    </div>
+
+    <div class="cfg-section">
+      <h3>Zone Thresholds (50-Zone)</h3>
+      <div id="zone-thresholds-50" style="max-height:300px;overflow-y:auto"></div>
+    </div>
+    </div>
   </div>
 </div>
 
@@ -268,6 +296,7 @@ body{font-family:system-ui,-apple-system,sans-serif;background:#111;color:#e0e0e
 <script src="stores_data.js"></script>
 <script src="initial_zones_24.js"></script>
 <script src="new_zones_50.js"></script>
+<script src="zones_15.js"></script>
 <script>
 // ===== OA DATA =====
 const OAS = [
@@ -458,6 +487,17 @@ function switchMode(mode) {
   document.getElementById('mode-btn-24').style.background = mode === 24 ? '#1a6b3c' : '';
   document.getElementById('mode-btn-50').style.background = mode === 50 ? '#1a6b3c' : '';
 
+  // In 50-mode, disable DMA locks by default since we're adding many new zones
+  // and dense DMAs (LA, Dallas, NYC) should be able to split across multiple OAs
+  if (mode === 50) {
+    document.getElementById('cfg-lock-dma').checked = false;
+    onLockDmaToggle();
+  } else {
+    document.getElementById('cfg-lock-dma').checked = true;
+    onLockDmaToggle();
+  }
+
+  rebuildMarkers();
   if (m.storeZone) {
     storeZone = m.storeZone;
     render();
@@ -469,7 +509,7 @@ function switchMode(mode) {
     storeZone = new Int16Array(STORES.length).fill(-1);
     render();
     toast('Running Auto-Assign across 50 zones — this may take a moment...');
-    setTimeout(() => { runAutoAssign(); m.storeZone = storeZone; }, 50);
+    setTimeout(() => { runAutoAssign(); m.storeZone = storeZone; rebuildMarkers(); render(); }, 50);
   }
   renderNewHireTable();
   toast(`Switched to ${NUM_ZONES}-zone view`);
@@ -491,6 +531,185 @@ function renderNewHireTable() {
       <td style="padding:4px;border:1px solid #333">${z.name}</td>
       <td style="padding:4px;border:1px solid #333">${z.parentName}</td>
       <td style="padding:4px;border:1px solid #333;text-align:center">${liveCount !== null ? liveCount : '~' + z.estCount}</td>
+    </tr>`;
+  }).join('');
+}
+
+// ===== ZONE TRANSITION (15→24) =====
+// TBH zones (indices 15-23) and their target zone names from ZONE_DATA_24
+const TBH_ZONES_24 = [
+  { idx: 15, name: 'Mountain West/Denver', oa: 'Emily Curry' },
+  { idx: 16, name: 'Northern California', oa: 'TBD' },
+  { idx: 17, name: 'San Antonio/W Texas', oa: 'TBD' },
+  { idx: 18, name: 'Oklahoma North', oa: 'TBD' },
+  { idx: 19, name: 'Missouri/Illinois', oa: 'Stanton Hughes' },
+  { idx: 20, name: 'Northern Plains', oa: 'TBD' },
+  { idx: 21, name: 'Jacksonville/N Florida', oa: 'Victoria Vieira' },
+  { idx: 22, name: 'Carolinas West', oa: 'TBD' },
+  { idx: 23, name: 'Appalachia/PA', oa: 'TBD' }
+];
+
+// Track which zones are active (starts with 0-14 for the 15 original zones)
+let activeZones = new Set(Array.from({length: 15}, (_, i) => i));
+// Store the original 15-zone assignments (loaded from CSV)
+let originalAssignments = null;
+
+// Build original assignments from the embedded ZONES_15 data
+function loadOriginalAssignments() {
+  if (typeof ZONES_15 === 'undefined') {
+    toast('15-zone data not loaded — check that zones_15.js exists');
+    return;
+  }
+  const assignments = {};
+  for (const [storeId, zone] of Object.entries(ZONES_15)) {
+    assignments[storeId] = { zone };
+  }
+  originalAssignments = assignments;
+}
+
+// Get the target zone for a store in the 24-zone plan
+function getTarget24Zone(storeId) {
+  if (typeof INITIAL_ZONES_24 !== 'undefined' && INITIAL_ZONES_24[storeId] !== undefined) {
+    return INITIAL_ZONES_24[storeId];
+  }
+  return -1;
+}
+
+// Activate a TBH zone: move stores from their current zones to the new zone
+function activateZone(tbhIdx) {
+  const tbh = TBH_ZONES_24.find(z => z.idx === tbhIdx);
+  if (!tbh || activeZones.has(tbhIdx)) return;
+  
+  // Find all stores that should be in this zone according to the 24-zone plan
+  let movedCount = 0;
+  const fromZones = {};
+  
+  for (let i = 0; i < STORES.length; i++) {
+    const targetZone = getTarget24Zone(STORES[i].id);
+    if (targetZone === tbhIdx) {
+      const currentZone = storeZone[i];
+      if (currentZone >= 0 && currentZone !== tbhIdx) {
+        // Track which zone we're taking from
+        if (!fromZones[currentZone]) fromZones[currentZone] = 0;
+        fromZones[currentZone]++;
+        // Move the store to the new zone
+        storeZone[i] = tbhIdx;
+        movedCount++;
+      }
+    }
+  }
+  
+  // Mark the zone as active
+  activeZones.add(tbhIdx);
+  
+  // Update the UI
+  renderTransitionTable();
+  render();
+  
+  // Show toast with details
+  const fromDetails = Object.entries(fromZones)
+    .map(([z, c]) => `${zoneName(parseInt(z))}: ${c}`)
+    .join(', ');
+  toast(`Activated ${tbh.name}: ${movedCount} stores moved from ${fromDetails || 'unassigned'}`);
+}
+
+// Deactivate a TBH zone: move stores back to their nearest active zone
+function deactivateZone(tbhIdx) {
+  const tbh = TBH_ZONES_24.find(z => z.idx === tbhIdx);
+  if (!tbh || !activeZones.has(tbhIdx) || tbhIdx < 15) return;
+  
+  // Move stores from this zone to their nearest active zone
+  let movedCount = 0;
+  for (let i = 0; i < STORES.length; i++) {
+    if (storeZone[i] === tbhIdx) {
+      // Find nearest active zone
+      let bestZone = -1, bestDist = Infinity;
+      for (const az of activeZones) {
+        if (az === tbhIdx) continue;
+        const d = distToOA(i, az);
+        if (d < bestDist) { bestDist = d; bestZone = az; }
+      }
+      if (bestZone >= 0) {
+        storeZone[i] = bestZone;
+        movedCount++;
+      }
+    }
+  }
+  
+  // Mark the zone as inactive
+  activeZones.delete(tbhIdx);
+  
+  // Update the UI
+  renderTransitionTable();
+  render();
+  toast(`Deactivated ${tbh.name}: ${movedCount} stores moved to nearest active zone`);
+}
+
+// Reset to the initial 15-zone state
+function resetTransition() {
+  // Reset active zones to only the original 15
+  activeZones = new Set(Array.from({length: 15}, (_, i) => i));
+  
+  // Reload original assignments from ZONES_15
+  if (originalAssignments) {
+    for (let i = 0; i < STORES.length; i++) {
+      const orig = originalAssignments[STORES[i].id];
+      if (orig) {
+        storeZone[i] = orig.zone;
+      } else {
+        storeZone[i] = -1;
+      }
+    }
+  } else {
+    storeZone = new Int16Array(STORES.length).fill(-1);
+  }
+  
+  renderTransitionTable();
+  render();
+  toast('Reset to 15-zone state');
+}
+
+// Activate all pending zones at once
+function activateAllPending() {
+  const pending = TBH_ZONES_24.filter(z => !activeZones.has(z.idx));
+  for (const tbh of pending) {
+    activateZone(tbh.idx);
+  }
+}
+
+// Render the transition table
+function renderTransitionTable() {
+  const tbody = document.getElementById('transition-tbody');
+  if (!tbody) return;
+  
+  // Update status
+  const statusEl = document.getElementById('transition-status');
+  if (statusEl) {
+    const activeCount = activeZones.size;
+    statusEl.innerHTML = `<b>${activeCount} of 24 zones active</b> — ${24 - activeCount} zones pending`;
+  }
+  
+  tbody.innerHTML = TBH_ZONES_24.map(tbh => {
+    const isActive = activeZones.has(tbh.idx);
+    const zoneData = ZONE_DATA_24[tbh.idx];
+    const displayName = zoneData ? zoneData.name : tbh.name;
+    const oaName = zoneData && zoneData.oa !== 'TBD' ? zoneData.oa : tbh.oa;
+    const count = isActive ? zoneCounts()[tbh.idx] : 0;
+    
+    return `<tr style="background:${isActive ? '#1a2a1a' : '#1a1a2e'}">
+      <td style="padding:4px;border:1px solid #333">${displayName}</td>
+      <td style="padding:4px;border:1px solid #333">${oaName}</td>
+      <td style="padding:4px;border:1px solid #333;text-align:center">
+        <span style="color:${isActive ? '#4a8' : '#888'}">${isActive ? `Active (${count})` : 'Pending'}</span>
+      </td>
+      <td style="padding:4px;border:1px solid #333;text-align:center">
+        ${isActive && tbh.idx >= 15 
+          ? `<button class="topbtn danger" onclick="deactivateZone(${tbh.idx})" style="padding:2px 6px;font-size:10px">Deactivate</button>`
+          : !isActive 
+            ? `<button class="topbtn primary" onclick="activateZone(${tbh.idx})" style="padding:2px 6px;font-size:10px">Activate</button>`
+            : ''
+        }
+      </td>
     </tr>`;
   }).join('');
 }
@@ -851,7 +1070,7 @@ function balanceZones() {
     }
     return rankCache[si].slice(0, n);
   };
-  const isLocal = (si, uz, k = 5) => topRank(si, k).includes(uz);
+  const isLocal = (si, uz, k = 8) => topRank(si, k).includes(uz);
 
   for (let iter = 0; iter < iters; iter++) {
     setProgress(50 + Math.round(iter / (iters + 1) * 35), `Balance iteration ${iter+1}/${iters}`);
@@ -892,7 +1111,7 @@ function balanceZones() {
     // Pass B: mean-equalization — zones well above the mean donate to zones well below,
     // tightening the spread. Locked-DMA stores never move; receivers never exceed the mean.
     counts = zoneCounts();
-    const high = mean + 4;
+    const high = mean + 2;
     for (let dz = 0; dz < NUM_ZONES; dz++) {
       if (counts[dz] <= high) continue;
       const cands = [];
@@ -905,7 +1124,7 @@ function balanceZones() {
           const d = distToOA(i, uz);
           if (d < bestD) { bestD = d; bestU = uz; }
         }
-        if (bestU >= 0 && bestD < 350) cands.push({idx: i, toZone: bestU, curDist: distToOA(i, dz)});
+        if (bestU >= 0 && bestD < 400) cands.push({idx: i, toZone: bestU, curDist: distToOA(i, dz)});
       }
       cands.sort((a, b) => b.curDist - a.curDist);
       for (const c of cands) {
@@ -920,7 +1139,7 @@ function balanceZones() {
     }
 
     // Pass C: fill zones still below target min, but ONLY with stores whose natural
-    // (nearest) zone is the under-min target and which sit within 300 mi — never drag
+    // (nearest) zone is the under-min target and which sit within 350 mi — never drag
     // stores across the country just to hit the floor.
     counts = zoneCounts();
     for (let uz = 0; uz < NUM_ZONES; uz++) {
@@ -931,7 +1150,7 @@ function balanceZones() {
         if (isLockedStore(i)) continue;
         if (topRank(i, 1)[0] !== uz) continue;
         const d = distToOA(i, uz);
-        if (d > 300) continue;
+        if (d > 350) continue;
         cands.push({idx: i, fromZone: storeZone[i], dist: d});
       }
       cands.sort((a, b) => a.dist - b.dist);
@@ -1486,6 +1705,7 @@ function render() {
   renderAreaSplits();
   renderTBHTable();
   renderNewHireTable();
+  renderTransitionTable();
   populateSGFilter();
   populateZoneFilters();
   updateFilterSummary();
@@ -1604,11 +1824,31 @@ function toggleConfig() {
   if (ov.classList.contains('show')) renderConfigPanel();
 }
 
+function switchConfigTab(mode) {
+  const tab24 = document.getElementById('cfg-tab-24');
+  const tab50 = document.getElementById('cfg-tab-50');
+  const content24 = document.getElementById('cfg-tab-content-24');
+  const content50 = document.getElementById('cfg-tab-content-50');
+  
+  if (mode === 24) {
+    tab24.style.background = '#1a6b3c';
+    tab50.style.background = '';
+    content24.style.display = '';
+    content50.style.display = 'none';
+  } else {
+    tab24.style.background = '';
+    tab50.style.background = '#1a6b3c';
+    content24.style.display = 'none';
+    content50.style.display = '';
+  }
+}
+
 function renderConfigPanel() {
   renderTBHTable();
   renderConstraintList();
   renderZoneThresholds();
   renderNewHireTable();
+  renderTransitionTable();
   populateSGFilter();
 }
 
@@ -2012,18 +2252,40 @@ function loadInitialAssignments() {
     setTimeout(() => { runAutoAssign(); MODES[50].storeZone = storeZone; }, 50);
     return;
   }
-  if (typeof INITIAL_ZONES_24 === 'undefined') {
-    toast('Initial zone data not loaded — check that initial_zones_24.js exists');
-    return;
-  }
+  
+  // Reset all assignments
   storeZone = new Int16Array(STORES.length).fill(-1);
   let assigned = 0;
-  for (let i = 0; i < STORES.length; i++) {
-    const z = INITIAL_ZONES_24[STORES[i].id];
-    if (z !== undefined && z >= 0 && z < NUM_ZONES) { storeZone[i] = z; assigned++; }
+  
+  // First, load the 15-zone assignments if available
+  if (originalAssignments) {
+    for (let i = 0; i < STORES.length; i++) {
+      const orig = originalAssignments[STORES[i].id];
+      if (orig && activeZones.has(orig.zone)) {
+        storeZone[i] = orig.zone;
+        assigned++;
+      }
+    }
   }
+  
+  // Then, for stores that should be in active 24-zones (zones 15-23),
+  // move them from their current zone to the target zone
+  if (typeof INITIAL_ZONES_24 !== 'undefined') {
+    for (let i = 0; i < STORES.length; i++) {
+      const targetZone = INITIAL_ZONES_24[STORES[i].id];
+      if (targetZone !== undefined && targetZone >= 15 && activeZones.has(targetZone)) {
+        // This store should be in an activated TBH zone
+        const currentZone = storeZone[i];
+        if (currentZone !== targetZone) {
+          storeZone[i] = targetZone;
+          assigned++;
+        }
+      }
+    }
+  }
+  
   render();
-  toast(`Loaded ${assigned} initial zone assignments`);
+  toast(`Loaded ${assigned} initial zone assignments (${activeZones.size} zones active)`);
 }
 
 function applySuggestion(si, toZone) {
@@ -2131,7 +2393,11 @@ document.addEventListener('DOMContentLoaded', () => {
   }
   document.getElementById('mode-btn-24').style.background = '#1a6b3c';
   renderNewHireTable();
+  
+  // Load original 15-zone assignments for transition feature
+  loadOriginalAssignments();
   loadInitialAssignments();
+  renderTransitionTable();
 });
 </script>
 </body>
