@@ -119,6 +119,11 @@ body{font-family:system-ui,-apple-system,sans-serif;background:#111;color:#e0e0e
       <button class="topbtn" id="mode-btn-50" onclick="switchMode(50)" style="border:0;border-radius:0">50 Zones</button>
       -->
     </div>
+    <div id="config-toggle" style="display:flex;gap:2px;border:1px solid #555;border-radius:6px;overflow:hidden">
+      <button class="topbtn" id="cfg-btn-original" onclick="switchConfig('original')" style="border:0;border-radius:0;background:#1a6b3c">Option 1</button>
+      <button class="topbtn" id="cfg-btn-experimental" onclick="switchConfig('experimental')" style="border:0;border-radius:0">Option 2</button>
+    </div>
+    <button class="topbtn primary" onclick="activateAllPending()" title="Activate all 24 zones">▶ Activate All</button>
     <label class="top-toggle" style="font-size:11px;cursor:pointer;display:flex;align-items:center;gap:3px;color:#aaa">
       <input type="checkbox" id="toggle-dots" checked onchange="redrawMap()"> Dots
     </label>
@@ -312,6 +317,7 @@ body{font-family:system-ui,-apple-system,sans-serif;background:#111;color:#e0e0e
 
 <script src="stores_data.js"></script>
 <script src="initial_zones_24.js"></script>
+<script src="option2_zones.js"></script>
 <!-- <script src="new_zones_50.js"></script> 50-zone shelved -->
 <script src="zones_15.js"></script>
 <script>
@@ -396,6 +402,89 @@ const zoneColors24 = [
 let ZONE_DATA = ZONE_DATA_24;
 let zoneColors = zoneColors24;
 let TBH_INIT = TBH_INIT_24;
+
+// ===== EXPERIMENTAL CONFIG (anchor experiment: toggled via topbar) =====
+// Keep all zone indexes identical to the original 24. Only re-anchor / rename:
+//   3  North Texas/Texas North/Oklahoma  -> DFW West (anchor Fort Worth)
+//  17  San Antonio/W Texas               -> Austin (anchor Austin)
+//  18  Oklahoma North                    -> DFW East (anchor Dallas)
+//  23  Appalachia/PA                     -> DC/Baltimore (anchor Washington DC)
+const ZONE_DATA_EXP = ZONE_DATA_24.map((z, i) => {
+  if (i === 3)  return {name:"DFW West", oa:"Danielle Hudson", region:"West", fop:"Noel Pelayo"};
+  if (i === 17) return {name:"Austin", oa:"TBD", region:"West", fop:"Noel Pelayo"};
+  if (i === 18) return {name:"DFW East", oa:"TBD", region:"West", fop:"Noel Pelayo"};
+  if (i === 23) return {name:"DC/Baltimore", oa:"TBD", region:"East", fop:"Kelly Sharpe"};
+  return {...z};
+});
+
+// Experimental TBH anchor locations
+const TBH_INIT_EXP = [
+  {name:"Denver (TBH)",lat:39.7392,lon:-104.9903},
+  {name:"Sacramento (TBH)",lat:38.5816,lon:-121.4944},
+  {name:"Austin (TBH)",lat:30.2672,lon:-97.7431},
+  {name:"Dallas (TBH)",lat:32.7767,lon:-96.7970},
+  {name:"St. Louis (TBH)",lat:38.627,lon:-90.1994},
+  {name:"Minneapolis (TBH)",lat:44.9759,lon:-93.2730},
+  {name:"Jacksonville (TBH)",lat:30.3322,lon:-81.6557},
+  {name:"Charlotte (TBH)",lat:35.2271,lon:-80.8431},
+  {name:"Washington DC (TBH)",lat:38.9072,lon:-77.0369}
+];
+
+// TBH zone display names, per config (indices 15-23)
+const TBH_ZONES_ORIG = [
+  { idx: 15, name: 'Mountain West/Denver', oa: 'Emily Curry' },
+  { idx: 16, name: 'Northern California', oa: 'TBD' },
+  { idx: 17, name: 'San Antonio/W Texas', oa: 'TBD' },
+  { idx: 18, name: 'Oklahoma North', oa: 'TBD' },
+  { idx: 19, name: 'Missouri/Illinois', oa: 'Stanton Hughes' },
+  { idx: 20, name: 'Northern Plains', oa: 'TBD' },
+  { idx: 21, name: 'Jacksonville/N Florida', oa: 'Victoria Vieira' },
+  { idx: 22, name: 'Carolinas West', oa: 'TBD' },
+  { idx: 23, name: 'Appalachia/PA', oa: 'TBD' }
+];
+const TBH_ZONES_EXP = [
+  { idx: 15, name: 'Mountain West/Denver', oa: 'Emily Curry' },
+  { idx: 16, name: 'Northern California', oa: 'TBD' },
+  { idx: 17, name: 'Austin', oa: 'TBD' },
+  { idx: 18, name: 'DFW East', oa: 'TBD' },
+  { idx: 19, name: 'Missouri/Illinois', oa: 'Stanton Hughes' },
+  { idx: 20, name: 'Northern Plains', oa: 'TBD' },
+  { idx: 21, name: 'Jacksonville/N Florida', oa: 'Victoria Vieira' },
+  { idx: 22, name: 'Carolinas West', oa: 'TBD' },
+  { idx: 23, name: 'DC/Baltimore', oa: 'TBD' }
+];
+
+// Active config state: 'original' | 'experimental'
+let ACTIVE_CONFIG = 'original';
+// Points at the active config's TBH zone display list
+let TBH_ZONES_24 = TBH_ZONES_ORIG;
+// DMAs that must stay together as a unit (never split across zones),
+// e.g. Las Vegas in the experimental config. Populated per config.
+let keepTogetherDmas = [];
+// Clean geographic boundary splits applied after the Voronoi baseline.
+// Each: {dma, splitLon, westZone, eastZone}
+let boundaryOverrides = [];
+// Set of store indices locked to stay put during balancing
+let protectedStores = new Set();
+const ZONE_CONFIGS = {
+  original: {
+    zoneData: ZONE_DATA_24, tbhInit: TBH_INIT_24, zoneColors: zoneColors24,
+    tbhZones: TBH_ZONES_ORIG,
+    keepTogetherDmas: [],
+    savedStoreZone: null, savedTbhLocs: null
+  },
+  experimental: {
+    zoneData: ZONE_DATA_EXP, tbhInit: TBH_INIT_EXP, zoneColors: zoneColors24,
+    tbhZones: TBH_ZONES_EXP,
+    keepTogetherDmas: { 'LAS VEGAS': 16 },
+    // Clean geographic splits applied AFTER the Voronoi baseline (store stays in
+    // its natural zone unless it falls in a defined boundary region).
+    boundaryOverrides: [
+      { dma: 'DALLAS-FT. WORTH', splitLon: -96.95, westZone: 3, eastZone: 18 }
+    ],
+    savedStoreZone: null, savedTbhLocs: null
+  }
+};
 
 const MAJOR_CITIES = [
   {name:"Seattle",lat:47.6062,lon:-122.3321},{name:"Portland",lat:45.5152,lon:-122.6784},
@@ -501,22 +590,68 @@ function switchMode(mode) {
   toast(`Switched to ${NUM_ZONES}-zone view`);
 }
 
+// ===== ORIGINAL vs EXPERIMENTAL CONFIG TOGGLE =====
+function switchConfig(name) {
+  if (name === ACTIVE_CONFIG) return;
+  if (!ZONE_CONFIGS[name]) return;
+
+  // Save current live state back into its config slot
+  const cur = ZONE_CONFIGS[ACTIVE_CONFIG];
+  cur.savedStoreZone = storeZone;
+  cur.savedTbhLocs = tbhLocs;
+
+  // Load target config
+  ACTIVE_CONFIG = name;
+  const cfg = ZONE_CONFIGS[name];
+  ZONE_DATA = cfg.zoneData;
+  TBH_INIT = cfg.tbhInit;
+  TBH_ZONES_24 = cfg.tbhZones;
+  keepTogetherDmas = cfg.keepTogetherDmas || [];
+  boundaryOverrides = cfg.boundaryOverrides || [];
+  protectedStores = new Set();
+  NUM_ZONES = 24;
+  TBH_COUNT = 9;
+
+  // Restore TBH anchor locations
+  tbhLocs = cfg.savedTbhLocs || cfg.tbhInit.map(x => ({...x}));
+  cfg.savedTbhLocs = tbhLocs;
+
+  // Both configs start from the same 15-zone base; Activate All builds the
+  // full 24-zone map for the active config.
+  activeZones = new Set(Array.from({length: 15}, (_, i) => i));
+  storeZone = new Int16Array(STORES.length).fill(-1);
+  if (typeof ZONES_15 !== 'undefined') {
+    for (let i = 0; i < STORES.length; i++) {
+      const z = ZONES_15[STORES[i].id];
+      if (z !== undefined) storeZone[i] = z;
+    }
+  }
+  cfg.savedStoreZone = storeZone;
+
+  updateConfigUI();
+  rebuildMarkers();
+  render();
+  renderTransitionTable();
+  toast(`Switched to ${name === 'experimental' ? 'Option 2' : 'Option 1'} zones — click "Activate All" to build the 24-zone map`);
+}
+
+function updateConfigUI() {
+  const oBtn = document.getElementById('cfg-btn-original');
+  const eBtn = document.getElementById('cfg-btn-experimental');
+  if (oBtn && eBtn) {
+    const on = 'background:#1a6b3c;border-color:#2a8b4c;color:#fff';
+    const off = 'background:#2a2a3e;border-color:#555;color:#e0e0e0';
+    oBtn.style.cssText = ACTIVE_CONFIG === 'original' ? on : off;
+    eBtn.style.cssText = ACTIVE_CONFIG === 'experimental' ? on : off;
+  }
+}
+
 // renderNewHireTable shelved with 50-zone mode
 // function renderNewHireTable() { ... }
 
 // ===== ZONE TRANSITION (15→24) =====
-// TBH zones (indices 15-23) and their target zone names from ZONE_DATA_24
-const TBH_ZONES_24 = [
-  { idx: 15, name: 'Mountain West/Denver', oa: 'Emily Curry' },
-  { idx: 16, name: 'Northern California', oa: 'TBD' },
-  { idx: 17, name: 'San Antonio/W Texas', oa: 'TBD' },
-  { idx: 18, name: 'Oklahoma North', oa: 'TBD' },
-  { idx: 19, name: 'Missouri/Illinois', oa: 'Stanton Hughes' },
-  { idx: 20, name: 'Northern Plains', oa: 'TBD' },
-  { idx: 21, name: 'Jacksonville/N Florida', oa: 'Victoria Vieira' },
-  { idx: 22, name: 'Carolinas West', oa: 'TBD' },
-  { idx: 23, name: 'Appalachia/PA', oa: 'TBD' }
-];
+// TBH_ZONES_ORIG / TBH_ZONES_EXP are defined with the config data above.
+// TBH_ZONES_24 points at the active config's zone list.
 
 // Track which zones are active (starts with 0-14 for the 15 original zones)
 let activeZones = new Set(Array.from({length: 15}, (_, i) => i));
@@ -528,8 +663,16 @@ function loadOriginalAssignments() {
   // no-op: loadInitialAssignments uses INITIAL_ZONES_24 directly
 }
 
-// Get the target zone for a store in the 24-zone plan
+// Get the target zone for a store in the 24-zone plan.
+// Option 1 (original) reads the authoritative INITIAL_ZONES_24;
+// Option 2 (experimental) reads the user's manual-result OPTION2_ZONES.
 function getTarget24Zone(storeId) {
+  if (ACTIVE_CONFIG === 'experimental') {
+    if (typeof OPTION2_ZONES !== 'undefined' && OPTION2_ZONES[storeId] !== undefined) {
+      return OPTION2_ZONES[storeId];
+    }
+    return -1;
+  }
   if (typeof INITIAL_ZONES_24 !== 'undefined' && INITIAL_ZONES_24[storeId] !== undefined) {
     return INITIAL_ZONES_24[storeId];
   }
@@ -602,12 +745,92 @@ function resetTransition() {
   toast('Reset to 15-zone state');
 }
 
+// Assign all stores in a keep-together DMA to ONE zone and mark them protected so
+// balancing never splits the DMA. keepTogetherDmas may be:
+//   ['LAS VEGAS']                    -> each DMA goes to its majority/vote zone
+//   { 'LAS VEGAS': 16 }              -> each DMA forced to the given zone index
+function lockDmasTogether(zoneAssign) {
+  protectedStores = new Set();
+  // Normalize to a list of [dmaName, forcedZone|null]
+  const entries = Array.isArray(keepTogetherDmas)
+    ? keepTogetherDmas.map(d => [d, null])
+    : Object.entries(keepTogetherDmas);
+  for (const [dma, forcedZone] of entries) {
+    if (!dma) continue;
+    const dmaIdx = [];
+    let cLat = 0, cLon = 0;
+    for (let i = 0; i < STORES.length; i++) {
+      if (STORES[i].dma.toUpperCase() === dma) {
+        dmaIdx.push(i);
+        cLat += STORES[i].lat; cLon += STORES[i].lon;
+      }
+    }
+    if (dmaIdx.length === 0) continue;
+    cLat /= dmaIdx.length; cLon /= dmaIdx.length;
+    // Pick the zone with the most stores among the DMA's nearest anchors
+    const votes = {};
+    for (const i of dmaIdx) {
+      const z = zoneAssign[i];
+      votes[z] = (votes[z] || 0) + 1;
+    }
+    let bestZone = -1, bestCount = -1;
+    for (const z in votes) { if (votes[z] > bestCount) { bestCount = votes[z]; bestZone = parseInt(z); } }
+    // Fall back to centroid-nearest zone if no votes
+    if (bestZone < 0) bestZone = distNearestZone(cLat, cLon);
+    // Apply optional forced zone (e.g. Las Vegas -> Northern California)
+    const target = (forcedZone !== null && forcedZone !== undefined) ? forcedZone : bestZone;
+    for (const i of dmaIdx) { zoneAssign[i] = target; protectedStores.add(i); }
+  }
+}
+
+// Find the zone (of NUM_ZONES) nearest to a lat/lon point
+function distNearestZone(lat, lon) {
+  let best = 0, bestD = Infinity;
+  for (let z = 0; z < NUM_ZONES; z++) {
+    const d = z < OA_COUNT
+      ? haversine(lat, lon, oaLocs[z].lat, oaLocs[z].lon)
+      : haversine(lat, lon, tbhLocs[z - OA_COUNT].lat, tbhLocs[z - OA_COUNT].lon);
+    if (d < bestD) { bestD = d; best = z; }
+  }
+  return best;
+}
+
 // Activate all pending zones at once
 function activateAllPending() {
   const pending = TBH_ZONES_24.filter(z => !activeZones.has(z.idx));
-  for (const tbh of pending) {
-    activateZone(tbh.idx);
+  if (pending.length === 0) { toast('All zones already active'); return; }
+  for (const tbh of pending) { activeZones.add(tbh.idx); }
+  
+  if (ACTIVE_CONFIG === 'experimental') {
+    // Option 2: authoritative manual-result plan (zone_assignments (7).csv).
+    // Load each store's zone directly from OPTION2_ZONES — no algorithm needed,
+    // this is the user's hand-cleanup snapshot.
+    showProgress();
+    setProgress(20, "Assigning Option 2 zones...");
+    storeZone = new Int16Array(STORES.length).fill(-1);
+    for (const tbh of pending) {
+      for (let i = 0; i < STORES.length; i++) {
+        if (getTarget24Zone(STORES[i].id) === tbh.idx) {
+          storeZone[i] = tbh.idx;
+        }
+      }
+    }
+    setProgress(90, "Rendering...");
+    hideProgress();
+  } else {
+    // Original: carve stores per the authoritative INITIAL_ZONES_24 plan
+    for (const tbh of pending) {
+      for (let i = 0; i < STORES.length; i++) {
+        if (getTarget24Zone(STORES[i].id) === tbh.idx) {
+          storeZone[i] = tbh.idx;
+        }
+      }
+    }
   }
+  
+  renderTransitionTable();
+  render();
+  toast(`Activated all ${pending.length} zones (${ACTIVE_CONFIG === 'experimental' ? 'Option 2' : 'Option 1'})`);
 }
 
 // Render the transition table
@@ -624,7 +847,7 @@ function renderTransitionTable() {
   
   tbody.innerHTML = TBH_ZONES_24.map(tbh => {
     const isActive = activeZones.has(tbh.idx);
-    const zoneData = ZONE_DATA_24[tbh.idx];
+    const zoneData = ZONE_DATA[tbh.idx];
     const displayName = zoneData ? zoneData.name : tbh.name;
     const oaName = zoneData && zoneData.oa !== 'TBD' ? zoneData.oa : tbh.oa;
     const count = isActive ? zoneCounts()[tbh.idx] : 0;
@@ -679,16 +902,32 @@ function nearestOA(si) {
   return {zone: best, dist: bestD};
 }
 
-// 15-zone name mapping (alphabetical sort of 15-zone CSV zone names)
+// 15-zone name mapping — maps 24-zone indices 0-14 to their zone names
 const ZONE_NAMES_15 = [
-  'Central Plains','Deep South','Florida Peninsula','Great Lakes East','Gulf Central',
-  'Mid-Atlantic South','Mid-South','Northeast Metro','Ohio Valley','Pacific Northwest',
-  'Pacific West','Southwest / Rockies','Texas North / Oklahoma','Texas South','Upper Midwest'
+  'Southern California',    // 0
+  'Desert Southwest',       // 1
+  'OH Valley West',         // 2
+  'North Texas',            // 3
+  'Houston/SE Texas',       // 4
+  'Florida Gulf',           // 5
+  'Deep South',             // 6
+  'OH Valley East',         // 7
+  'Carolinas East',         // 8
+  'Central Plains',         // 9
+  'Upper Midwest',          // 10
+  'Pacific Northwest',      // 11
+  'Northeast Metro',        // 12
+  'Mid-South',              // 13
+  'Gulf Coast'              // 14
 ];
 
 function zoneName(z) {
   if (z < 0) return 'Unassigned';
-  if (z < 15) return ZONE_NAMES_15[z];
+  // For zones 0-14, prefer the active config's name if it differs from the default.
+  if (z < 15) {
+    if (ZONE_DATA[z] && ZONE_DATA[z].name) return ZONE_DATA[z].name;
+    return ZONE_NAMES_15[z];
+  }
   if (z >= 15 && z < NUM_ZONES && ZONE_DATA[z] && ZONE_DATA[z].name) return ZONE_DATA[z].name;
   if (z < OA_COUNT) return OAS[z].name;
   return tbhLocs[z - OA_COUNT].name;
@@ -968,6 +1207,165 @@ function assignAreas() {
   if (remaining > 0) console.log(`Phase 2b: assigned ${remaining} individual remaining stores`);
 }
 
+// ===== EXPERIMENTAL WHOLE-AREA (AREA-VORONOI) =====
+// Assigns each whole AREA (franchisee territory) to a SINGLE zone: its
+// centroid-nearest anchor. This yields at most a handful of split areas (only the
+// intentional DFW East/West boundary and the Las Vegas keep-together), while each
+// zone is a contiguous cluster of areas (a proper area-level Voronoi — no patchwork).
+// Balancing then moves whole areas between zones only, never re-splitting an area.
+function anchorLat(z) {
+  return z < OA_COUNT ? oaLocs[z].lat : tbhLocs[z - OA_COUNT].lat;
+}
+function anchorLon(z) {
+  return z < OA_COUNT ? oaLocs[z].lon : tbhLocs[z - OA_COUNT].lon;
+}
+function distPtZone(lat, lon, z) {
+  return haversine(lat, lon, anchorLat(z), anchorLon(z));
+}
+
+// Assign every whole area to its centroid-nearest zone.
+function assignExperimentalAreas() {
+  for (const a in _areaIdx._groups) {
+    const sis = _areaIdx._groups[a];
+    const clat = areaCentroidLat(a), clon = areaCentroidLon(a);
+    let best = 0, bestD = Infinity;
+    for (let z = 0; z < NUM_ZONES; z++) {
+      const d = distPtZone(clat, clon, z);
+      if (d < bestD) { bestD = d; best = z; }
+    }
+    for (const si of sis) storeZone[si] = best;
+  }
+}
+
+// Apply clean geographic boundary splits (e.g. split the DFW metro East/West along
+// a meridian so the two close-OA zones form clear halves instead of a messy blot).
+function applyBoundaryOverrides() {
+  for (const b of boundaryOverrides) {
+    for (let i = 0; i < STORES.length; i++) {
+      if (storeZone[i] < 0) continue;
+      if (STORES[i].dma.toUpperCase() !== b.dma) continue;
+      storeZone[i] = STORES[i].lon < b.splitLon ? b.westZone : b.eastZone;
+    }
+  }
+}
+
+// Whole-area balancing: move whole areas between zones (never split an area that is
+// currently whole) to bring every zone up to >= tMin. Over-capacity zones shed whole
+// areas; sparse zones pull whole areas in. Zone sizes are kept reasonable.
+function balanceExperimentalAreas() {
+  const tMin = 150;
+  const tMax = 250;
+  const areaZone = {};
+  const areaCount = {};
+  for (const a in _areaIdx._groups) {
+    areaZone[a] = storeZone[_areaIdx._groups[a][0]];
+    areaCount[a] = _areaIdx._groups[a].length;
+  }
+
+  for (let iter = 0; iter < 80; iter++) {
+    let moved = 0;
+    const counts = zoneCounts();
+    // Pass 1: tightly balance over-capacity zones by shedding whole areas to the
+    // nearest under-capacity neighbor (but don't over-drain rich donors).
+    const over = [];
+    for (let z = 0; z < NUM_ZONES; z++) if (counts[z] > tMax) over.push(z);
+    over.sort((a, b) => (counts[b] - tMax) - (counts[a] - tMax));
+    for (const oz of over) {
+      const cands = [];
+      for (const a in areaZone) {
+        if (areaZone[a] !== oz) continue;
+        if (areaHasProtected(a)) continue;
+        if (!areaIsCoherentInZone(a, oz)) continue;
+        if (areaInDfw(a)) continue;
+        const clat = areaCentroidLat(a), clon = areaCentroidLon(a);
+        let bestU = -1, bestD = Infinity;
+        for (let uz = 0; uz < NUM_ZONES; uz++) {
+          if (uz === oz || counts[uz] >= tMax) continue;
+          const d = distPtZone(clat, clon, uz);
+          if (d < bestD) { bestD = d; bestU = uz; }
+        }
+        if (bestU >= 0) cands.push({area: a, n: areaCount[a], to: bestU, cur: distPtZone(clat, clon, oz)});
+      }
+      cands.sort((x, y) => y.cur - x.cur);
+      for (const c of cands) {
+        if (counts[oz] <= tMax || counts[c.to] >= tMax) break;
+        moveArea(c.area, c.to, counts, areaZone);
+        moved++;
+      }
+    }
+    // Pass 2: pull whole areas into any zone still below the floor.
+    const counts2 = zoneCounts();
+    for (let uz = 0; uz < NUM_ZONES; uz++) {
+      if (counts2[uz] >= tMin) continue;
+      const cands = [];
+      for (const a in areaZone) {
+        const fr = areaZone[a];
+        if (fr === uz) continue;
+        if (areaHasProtected(a)) continue;
+        if (!areaIsCoherentInZone(a, fr)) continue;
+        const n = areaCount[a];
+        if (counts2[fr] - n < tMin) continue;
+        if (areaInDfw(a)) continue;
+        const d = distPtZone(areaCentroidLat(a), areaCentroidLon(a), uz);
+        cands.push({area: a, n, from: fr, d});
+      }
+      cands.sort((x, y) => x.d - y.d || x.n - y.n);
+      for (const c of cands) {
+        if (counts2[uz] >= tMin) break;
+        moveArea(c.area, uz, counts2, areaZone);
+        moved++;
+      }
+    }
+    if (moved === 0) break;
+  }
+
+  function moveArea(a, to, counts, az) {
+    for (const si of _areaIdx._groups[a]) storeZone[si] = to;
+    counts[az[a]] -= areaCount[a];
+    counts[to] += areaCount[a];
+    az[a] = to;
+  }
+}
+
+// --- area helpers (cached) ---
+const _areaIdx = {};
+function buildAreaCache() {
+  _areaIdx._groups = {};
+  for (let i = 0; i < STORES.length; i++) {
+    const a = STORES[i].area;
+    if (!_areaIdx._groups[a]) _areaIdx._groups[a] = [];
+    _areaIdx._groups[a].push(i);
+  }
+}
+function areaStoreIds(a) { return _areaIdx._groups[a] || []; }
+function areaSize(a) { const g = _areaIdx._groups[a]; return g ? g.length : 0; }
+function areaHasProtected(a) {
+  const g = _areaIdx._groups[a];
+  if (!g) return false;
+  for (const si of g) if (protectedStores.has(si)) return true;
+  return false;
+}
+function areaInDfw(a) {
+  const g = _areaIdx._groups[a];
+  return g && g.length > 0 && STORES[g[0]].dma.toUpperCase() === 'DALLAS-FT. WORTH';
+}
+function areaIsCoherentInZone(a, z) {
+  const g = _areaIdx._groups[a];
+  if (!g) return true;
+  for (const si of g) if (storeZone[si] !== z) return false;
+  return true;
+}
+function areaCentroidLat(a) {
+  let s = 0; const g = areaStoreIds(a);
+  for (const si of g) s += STORES[si].lat;
+  return g.length ? s / g.length : 0;
+}
+function areaCentroidLon(a) {
+  let s = 0; const g = areaStoreIds(a);
+  for (const si of g) s += STORES[si].lon;
+  return g.length ? s / g.length : 0;
+}
+
 function wouldSplitArea(si, toZone) {
   if (!document.getElementById('cfg-keep-areas').checked) return false;
   const area = STORES[si].area;
@@ -991,6 +1389,7 @@ function balanceZones() {
   const cap = (z) => getTargetMax(z);
   let counts;
   const isLockedStore = (i) => {
+    if (protectedStores.has(i)) return true;
     const dz = storeZone[i];
     if (!(dz < OA_COUNT && oaDmas[dz] && STORES[i].dma === oaDmas[dz])) return false;
     if (dmaLocksDisabled.has(dz)) return false;
@@ -2173,7 +2572,7 @@ function loadInitialAssignments() {
   storeZone = new Int16Array(STORES.length).fill(-1);
   let assigned = 0;
   
-  // ZONES_15 maps each store to its 15-zone index (0-14).
+  // ZONES_15 maps each store to its 24-zone index (0-14).
   // All stores get assigned; no zones are inactive in the 15-zone view.
   if (typeof ZONES_15 !== 'undefined') {
     for (let i = 0; i < STORES.length; i++) {
@@ -2301,6 +2700,7 @@ document.addEventListener('DOMContentLoaded', () => {
   // Load original 15-zone assignments for transition feature
   loadOriginalAssignments();
   loadInitialAssignments();
+  updateConfigUI();
   renderTransitionTable();
 });
 </script>
