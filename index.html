@@ -803,17 +803,13 @@ function activateAllPending() {
   
   if (ACTIVE_CONFIG === 'experimental') {
     // Option 2: authoritative manual-result plan (zone_assignments (7).csv).
-    // Load each store's zone directly from OPTION2_ZONES — no algorithm needed,
-    // this is the user's hand-cleanup snapshot.
+    // Align EVERY store to its target zone from OPTION2_ZONES (not just the
+    // pending zones) — this snapshot already has all 24 zones balanced.
     showProgress();
     setProgress(20, "Assigning Option 2 zones...");
     storeZone = new Int16Array(STORES.length).fill(-1);
-    for (const tbh of pending) {
-      for (let i = 0; i < STORES.length; i++) {
-        if (getTarget24Zone(STORES[i].id) === tbh.idx) {
-          storeZone[i] = tbh.idx;
-        }
-      }
+    for (let i = 0; i < STORES.length; i++) {
+      storeZone[i] = getTarget24Zone(STORES[i].id);
     }
     setProgress(90, "Rendering...");
     hideProgress();
