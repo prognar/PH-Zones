@@ -616,15 +616,14 @@ function switchConfig(name) {
   tbhLocs = cfg.savedTbhLocs || cfg.tbhInit.map(x => ({...x}));
   cfg.savedTbhLocs = tbhLocs;
 
-  // Both configs start from the same 15-zone base; Activate All builds the
-  // full 24-zone map for the active config.
-  activeZones = new Set(Array.from({length: 15}, (_, i) => i));
+  // Load the active config's full authoritative 24-zone map immediately, so the
+  // map and zone cards are always in sync (Option 1: INITIAL_ZONES_24, Option 2:
+  // OPTION2_ZONES). No need to click "Activate All" to build it — each option is a
+  // complete, already-balanced 24-zone snapshot.
+  activeZones = new Set(Array.from({length: NUM_ZONES}, (_, i) => i));
   storeZone = new Int16Array(STORES.length).fill(-1);
-  if (typeof ZONES_15 !== 'undefined') {
-    for (let i = 0; i < STORES.length; i++) {
-      const z = ZONES_15[STORES[i].id];
-      if (z !== undefined) storeZone[i] = z;
-    }
+  for (let i = 0; i < STORES.length; i++) {
+    storeZone[i] = getTarget24Zone(STORES[i].id);
   }
   cfg.savedStoreZone = storeZone;
 
@@ -632,7 +631,7 @@ function switchConfig(name) {
   rebuildMarkers();
   render();
   renderTransitionTable();
-  toast(`Switched to ${name === 'experimental' ? 'Option 2' : 'Option 1'} zones — click "Activate All" to build the 24-zone map`);
+  toast(`Switched to ${name === 'experimental' ? 'Option 2' : 'Option 1'} zones — all 24 zones loaded`);
 }
 
 function updateConfigUI() {
@@ -2567,24 +2566,18 @@ function clearAllAssignments() {
 function loadInitialAssignments() {
   storeZone = new Int16Array(STORES.length).fill(-1);
   let assigned = 0;
-  
-  // ZONES_15 maps each store to its 24-zone index (0-14).
-  // All stores get assigned; no zones are inactive in the 15-zone view.
-  if (typeof ZONES_15 !== 'undefined') {
-    for (let i = 0; i < STORES.length; i++) {
-      const z = ZONES_15[STORES[i].id];
-      if (z !== undefined) {
-        storeZone[i] = z;
-        assigned++;
-      }
-    }
+
+  // Load the active config's full authoritative 24-zone map immediately so the
+  // map and zone cards are in sync on first paint (Option 1: INITIAL_ZONES_24,
+  // Option 2: OPTION2_ZONES). Each option is a complete 24-zone snapshot.
+  for (let i = 0; i < STORES.length; i++) {
+    const z = getTarget24Zone(STORES[i].id);
+    if (z >= 0) { storeZone[i] = z; assigned++; }
   }
-  
-  // Stores in TBH zones (15-23) start unassigned.
-  // They get populated when their zone is activated.
-  
+  activeZones = new Set(Array.from({length: 24}, (_, i) => i));
+
   render();
-  toast(`Loaded ${assigned} store assignments (15 zones)`);
+  toast(`Loaded ${assigned} store assignments (24 zones)`);
 }
 
 function applySuggestion(si, toZone) {
