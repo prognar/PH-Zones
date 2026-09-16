@@ -113,11 +113,9 @@ body{font-family:system-ui,-apple-system,sans-serif;background:#111;color:#e0e0e
       <span class="st">σ: <b id="sigma-display">—</b></span>
       <span class="st"><span id="over-under"></span></span>
     </div>
-    <div id="mode-toggle" style="display:none">
+    <div id="mode-toggle" style="display:flex;gap:2px;border:1px solid #555;border-radius:6px;overflow:hidden">
       <button class="topbtn" id="mode-btn-24" onclick="switchMode(24)" style="border:0;border-radius:0;background:#1a6b3c">24 Zones</button>
-      <!-- 50-zone mode shelved for now
       <button class="topbtn" id="mode-btn-50" onclick="switchMode(50)" style="border:0;border-radius:0">50 Zones</button>
-      -->
     </div>
     <div id="config-toggle" style="display:flex;gap:2px;border:1px solid #555;border-radius:6px;overflow:hidden">
       <button class="topbtn" id="cfg-btn-original" onclick="switchConfig('original')" style="border:0;border-radius:0;background:#1a6b3c">Option 1</button>
@@ -181,12 +179,10 @@ body{font-family:system-ui,-apple-system,sans-serif;background:#111;color:#e0e0e
     <button class="close" onclick="toggleConfig()">✕</button>
     <h2>Configuration</h2>
 
-    <!-- 50-zone tab shelved
     <div style="display:flex;gap:4px;margin-bottom:12px;border-bottom:1px solid #333;padding-bottom:8px">
       <button class="topbtn" id="cfg-tab-24" onclick="switchConfigTab(24)" style="background:#1a6b3c">24-Zone Mode</button>
       <button class="topbtn" id="cfg-tab-50" onclick="switchConfigTab(50)">50-Zone Mode</button>
     </div>
-    -->
 
     <div id="cfg-tab-content-24">
     <div class="cfg-section">
@@ -318,7 +314,7 @@ body{font-family:system-ui,-apple-system,sans-serif;background:#111;color:#e0e0e
 <script src="stores_data.js"></script>
 <script src="initial_zones_24.js"></script>
 <script src="option2_zones.js"></script>
-<!-- <script src="new_zones_50.js"></script> 50-zone shelved -->
+<script src="new_zones_50.js"></script>
 <script src="zones_15.js"></script>
 <script>
 // ===== OA DATA =====
@@ -394,11 +390,6 @@ const zoneColors24 = [
   "#bfef45","#fabed4","#469990","#dcbeff","#c800ff","#fffac8","#800000","#aaffc3",
   "#808000","#ffd8b1","#ffff00","#a9a9a9","#ff6f61","#6a3d9a","#b3e4a3","#f4a582"
 ];
-// 50-zone palette shelved
-// const zoneColors50 = zoneColors24.concat(Array.from({length:26}, (_, i) => {
-//   const hue = Math.round((i * 360 / 26 + 15) % 360);
-//   return `hsl(${hue}, 70%, 55%)`;
-// }));
 let ZONE_DATA = ZONE_DATA_24;
 let zoneColors = zoneColors24;
 let TBH_INIT = TBH_INIT_24;
@@ -541,11 +532,35 @@ let oaLocs = OAS.map(x => ({...x}));
 let filterZone = -1, filterArea = null; // for highlighting
 let filterFop = null, filterRegion = null; // FOP / Region filters
 
-// ===== 50-ZONE MODE DATA (shelved) =====
-// const ZONE_DATA_50 = ZONE_DATA_24.concat(
-//   (typeof NEW_ZONE_DEFS_50 !== 'undefined' ? NEW_ZONE_DEFS_50 : []).map(z => ({name: z.name, oa: z.oa, region: z.region, fop: z.fop}))
-// );
-// const TBH_INIT_50 = TBH_INIT_24.concat(typeof NEW_TBH_LOCS_50 !== 'undefined' ? NEW_TBH_LOCS_50 : []);
+// ===== 50-ZONE MODE DATA =====
+// The 50-zone option keeps the 24 Option 2 zones intact and adds 26 new-hire
+// zones (derived by splitting existing zones E/W or N/S along their dominant
+// axis — see new_zones_50.js). Assignment comes straight from OPTION2_ZONES_50.
+function buildZoneData50() {
+  const base = ZONE_DATA_EXP; // Option 2 24-zone names/oa/region/fop
+  const extra = (typeof NEW_ZONE_DEFS_50 !== 'undefined') ? NEW_ZONE_DEFS_50 : [];
+  return base.concat(extra.map(z => ({name: z.name, oa: z.oa, region: z.region, fop: z.fop})));
+}
+function buildTbhInit50() {
+  return TBH_INIT_EXP.concat(typeof NEW_TBH_LOCS_50 !== 'undefined' ? NEW_TBH_LOCS_50 : []);
+}
+const zoneColors50 = (() => {
+  const c = zoneColors24.concat(Array.from({length: 26}, (_, i) => {
+    const hue = Math.round((i * 360 / 26 + 15) % 360);
+    return `hsl(${hue}, 70%, 55%)`;
+  }));
+  return c;
+})();
+
+function buildMode50() {
+  return {
+    numZones: 50, tbhCount: 35,
+    zoneData: buildZoneData50(), tbhInit: buildTbhInit50(), zoneColors: zoneColors50,
+    targetMin: 70, targetMax: 115, strongBonus: 20,
+    storeZone: null, tbhLocs: null,
+    hasGroundTruth: true
+  };
+}
 
 const MODES = {
   24: {
@@ -554,19 +569,13 @@ const MODES = {
     targetMin: 150, targetMax: 250, strongBonus: 40,
     storeZone: null,
     hasGroundTruth: true
-  }
-  // 50: {
-  //   numZones: 50, tbhCount: 35,
-  //   zoneData: ZONE_DATA_50, tbhInit: TBH_INIT_50, zoneColors: zoneColors50,
-  //   targetMin: 70, targetMax: 115, strongBonus: 20,
-  //   storeZone: null,
-  //   hasGroundTruth: false
-  // }
+  },
+  50: buildMode50()
 };
 
 function switchMode(mode) {
   if (mode === CURRENT_MODE) return;
-  if (mode !== 24) return; // 50-zone mode shelved
+  if (!MODES[mode]) return;
   // Save current mode's live state back into its slot
   const cur = MODES[CURRENT_MODE];
   cur.storeZone = storeZone;
@@ -581,19 +590,42 @@ function switchMode(mode) {
   tbhLocs = m.tbhLocs || m.tbhInit.map(x => ({...x}));
   m.tbhLocs = tbhLocs;
 
+  // 50-zone view loads the generated OPTION2_ZONES_50 snapshot directly.
+  // 24-zone view loads the active config's authoritative map (Option 1/2).
+  storeZone = new Int16Array(STORES.length).fill(-1);
+  if (mode === 50) {
+    for (let i = 0; i < STORES.length; i++) {
+      storeZone[i] = (typeof OPTION2_ZONES_50 !== 'undefined' && OPTION2_ZONES_50[STORES[i].id] !== undefined)
+        ? OPTION2_ZONES_50[STORES[i].id] : -1;
+    }
+    activeZones = new Set(Array.from({length: 50}, (_, i) => i));
+  } else {
+    for (let i = 0; i < STORES.length; i++) {
+      storeZone[i] = getTarget24Zone(STORES[i].id);
+    }
+    activeZones = new Set(Array.from({length: 24}, (_, i) => i));
+  }
+  m.storeZone = storeZone;
+
   document.getElementById('cfg-target-min').value = m.targetMin;
   document.getElementById('cfg-target-max').value = m.targetMax;
   document.getElementById('cfg-strong-bonus').value = m.strongBonus;
 
+  updateConfigUI();
   rebuildMarkers();
-  loadInitialAssignments();
-  toast(`Switched to ${NUM_ZONES}-zone view`);
+  render();
+  renderTransitionTable();
+  toast(`Switched to ${NUM_ZONES}-zone ${NUM_ZONES === 50 ? '(Option 2 base + 26 new hires)' : 'view'}`);
 }
 
 // ===== ORIGINAL vs EXPERIMENTAL CONFIG TOGGLE =====
 function switchConfig(name) {
-  if (name === ACTIVE_CONFIG) return;
+  if (name === ACTIVE_CONFIG && CURRENT_MODE !== 50) return;
   if (!ZONE_CONFIGS[name]) return;
+
+  // Switching config always returns to the 24-zone view (50-zone is built on
+  // the Option 2 base only).
+  if (CURRENT_MODE !== 24) CURRENT_MODE = 24;
 
   // Save current live state back into its config slot
   const cur = ZONE_CONFIGS[ACTIVE_CONFIG];
@@ -642,6 +674,22 @@ function updateConfigUI() {
     const off = 'background:#2a2a3e;border-color:#555;color:#e0e0e0';
     oBtn.style.cssText = ACTIVE_CONFIG === 'original' ? on : off;
     eBtn.style.cssText = ACTIVE_CONFIG === 'experimental' ? on : off;
+  }
+  const m24 = document.getElementById('mode-btn-24');
+  const m50 = document.getElementById('mode-btn-50');
+  if (m24 && m50) {
+    const on = 'background:#1a6b3c;border-color:#2a8b4c;color:#fff';
+    const off = 'background:#2a2a3e;border-color:#555;color:#e0e0e0';
+    m24.style.cssText = CURRENT_MODE === 24 ? on : off;
+    m50.style.cssText = CURRENT_MODE === 50 ? on : off;
+  }
+  const t24 = document.getElementById('cfg-tab-24');
+  const t50 = document.getElementById('cfg-tab-50');
+  if (t24 && t50) {
+    const on = 'background:#1a6b3c;border-color:#2a8b4c;color:#fff';
+    const off = 'background:#2a2a3e;border-color:#555;color:#e0e0e0';
+    t24.style.cssText = CURRENT_MODE === 24 ? on : off;
+    t50.style.cssText = CURRENT_MODE === 50 ? on : off;
   }
 }
 
@@ -2159,8 +2207,22 @@ function toggleConfig() {
   if (ov.classList.contains('show')) renderConfigPanel();
 }
 
-// switchConfigTab shelved with 50-zone mode
-// function switchConfigTab(mode) { ... }
+function switchConfigTab(mode) {
+  switchMode(mode);
+  const tabs = [
+    document.getElementById('cfg-tab-24'),
+    document.getElementById('cfg-tab-50')
+  ];
+  if (tabs[0] && tabs[1]) {
+    if (mode === 24) {
+      tabs[0].style.cssText = 'background:#1a6b3c;border-color:#2a8b4c;color:#fff';
+      tabs[1].style.cssText = 'background:#2a2a3e;border-color:#555;color:#e0e0e0';
+    } else {
+      tabs[1].style.cssText = 'background:#1a6b3c;border-color:#2a8b4c;color:#fff';
+      tabs[0].style.cssText = 'background:#2a2a3e;border-color:#555;color:#e0e0e0';
+    }
+  }
+}
 
 function renderConfigPanel() {
   renderTBHTable();
@@ -2683,13 +2745,9 @@ document.addEventListener('DOMContentLoaded', () => {
       document.getElementById('map-loading').textContent = '⚠ Map error — see console';
     }
   }
-  // document.getElementById('mode-btn-24').style.background = '#1a6b3c'; // mode toggle shelved
-  // renderNewHireTable(); // shelved with 50-zone mode
-  
-  // Load original 15-zone assignments for transition feature
-  loadOriginalAssignments();
+  // Load initial 24-zone assignments for the active config
   loadInitialAssignments();
-  updateConfigUI();
+  updateConfigUI(); // syncs Option 1/2 AND 24/50-zone buttons
   renderTransitionTable();
 });
 </script>
