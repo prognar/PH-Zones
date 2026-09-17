@@ -1,0 +1,14 @@
+# Only files that serve index.html are tracked.
+# index.html depends on exactly these local scripts (see its <script> tags),
+# everything else in the working folder is build/analysis output or legacy.
+/*
+!/index.html
+!/stores_data.js
+!/store_perf.js
+!/initial_zones_24.js
+!/option2_zones.js
+!/new_zones_50.js
+!/opt1_zones_50.js
+!/perf_zones_50.js
+!/zones_15.js
+!/.gitignore

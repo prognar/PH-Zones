@@ -317,6 +317,7 @@ body{font-family:system-ui,-apple-system,sans-serif;background:#111;color:#e0e0e
 <script src="initial_zones_24.js"></script>
 <script src="option2_zones.js"></script>
 <script src="new_zones_50.js"></script>
+<script src="opt1_zones_50.js"></script>
 <script src="perf_zones_50.js"></script>
 <script src="zones_15.js"></script>
 <script>
@@ -536,15 +537,24 @@ let filterZone = -1, filterArea = null; // for highlighting
 let filterFop = null, filterRegion = null; // FOP / Region filters
 
 // ===== 50-ZONE MODE DATA =====
-// The 50-zone option keeps the 24 Option 2 zones intact and adds 26 new-hire
-// zones (derived by splitting existing zones E/W or N/S along their dominant
-// axis — see new_zones_50.js). Assignment comes straight from OPTION2_ZONES_50.
+// Option 1 (Geographic) 50-zone plan is the user-defined 50 OA spots living in
+// opt1_zones_50.js (OPT1_ZONE_DEFS_50 / OPT1_TBH_LOCS_50 / OPT1_ZONES_50):
+// 50 flat zones (90-100 stores, seniors 70-90), no Philadelphia zone (serviced
+// by Tim King in the New York City zone), Alaska/Hawaii mapped to West Coast.
+// Option 2 (Performance) keeps the 24 Option-2 parents + 26 weighted new zones
+// (perf_zones_50.js). Assignment loads straight from the precomputed maps.
 function buildZoneData50() {
-  const base = ZONE_DATA_EXP; // Option 2 24-zone names/oa/region/fop
+  if (typeof OPT1_ZONE_DEFS_50 !== 'undefined') {
+    return OPT1_ZONE_DEFS_50.map(z => ({name: z.name, oa: z.oa, region: z.region, fop: z.fop}));
+  }
+  const base = ZONE_DATA_EXP; // legacy fallback (24 Option-2 parents + 26 splits)
   const extra = (typeof NEW_ZONE_DEFS_50 !== 'undefined') ? NEW_ZONE_DEFS_50 : [];
   return base.concat(extra.map(z => ({name: z.name, oa: z.oa, region: z.region, fop: z.fop})));
 }
 function buildTbhInit50() {
+  if (typeof OPT1_TBH_LOCS_50 !== 'undefined') {
+    return OPT1_TBH_LOCS_50.map(x => ({...x}));
+  }
   return TBH_INIT_EXP.concat(typeof NEW_TBH_LOCS_50 !== 'undefined' ? NEW_TBH_LOCS_50 : []);
 }
 // Option 2 (Performance): same 24 parents, but the 26 new OAs are placed where
@@ -563,6 +573,9 @@ function getTarget50Zone(storeId) {
       return OPTION2_ZONES_50_PERF[storeId];
     }
     return -1;
+  }
+  if (typeof OPT1_ZONES_50 !== 'undefined' && OPT1_ZONES_50[storeId] !== undefined) {
+    return OPT1_ZONES_50[storeId];
   }
   if (typeof OPTION2_ZONES_50 !== 'undefined' && OPTION2_ZONES_50[storeId] !== undefined) {
     return OPTION2_ZONES_50[storeId];
