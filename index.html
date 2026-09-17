@@ -150,6 +150,7 @@ body{font-family:system-ui,-apple-system,sans-serif;background:#111;color:#e0e0e
           <button class="topbtn" onclick="clearAreaDetail()" style="padding:2px 8px;font-size:10px">✕</button>
         </div>
         <div id="area-zone-list" style="color:#aaa;margin-bottom:4px"></div>
+        <div id="area-perf" style="color:#aaa;margin-bottom:4px;font-size:10px"></div>
         <div class="cfg-row" style="margin-bottom:6px">
           <label style="width:auto;font-size:10px">Move all to:</label>
           <select id="area-move-zone" style="flex:1;padding:2px 4px;font-size:10px;background:#2a2a3e;border:1px solid #555;border-radius:3px;color:#e0e0e0"></select>
@@ -312,9 +313,11 @@ body{font-family:system-ui,-apple-system,sans-serif;background:#111;color:#e0e0e
 <div id="toast"></div>
 
 <script src="stores_data.js"></script>
+<script src="store_perf.js"></script>
 <script src="initial_zones_24.js"></script>
 <script src="option2_zones.js"></script>
 <script src="new_zones_50.js"></script>
+<script src="perf_zones_50.js"></script>
 <script src="zones_15.js"></script>
 <script>
 // ===== OA DATA =====
@@ -544,6 +547,28 @@ function buildZoneData50() {
 function buildTbhInit50() {
   return TBH_INIT_EXP.concat(typeof NEW_TBH_LOCS_50 !== 'undefined' ? NEW_TBH_LOCS_50 : []);
 }
+// Option 2 (Performance): same 24 parents, but the 26 new OAs are placed where
+// stores need help most (weighted by 5-Star tier) — see perf_zones_50.js.
+function buildZoneData50Perf() {
+  const base = ZONE_DATA_EXP;
+  const extra = (typeof NEW_ZONE_DEFS_50_PERF !== 'undefined') ? NEW_ZONE_DEFS_50_PERF : [];
+  return base.concat(extra.map(z => ({name: z.name, oa: z.oa, region: z.region, fop: z.fop})));
+}
+function buildTbhInit50Perf() {
+  return TBH_INIT_EXP.concat(typeof NEW_TBH_LOCS_50_PERF !== 'undefined' ? NEW_TBH_LOCS_50_PERF : []);
+}
+function getTarget50Zone(storeId) {
+  if (ACTIVE_CONFIG === 'experimental') {
+    if (typeof OPTION2_ZONES_50_PERF !== 'undefined' && OPTION2_ZONES_50_PERF[storeId] !== undefined) {
+      return OPTION2_ZONES_50_PERF[storeId];
+    }
+    return -1;
+  }
+  if (typeof OPTION2_ZONES_50 !== 'undefined' && OPTION2_ZONES_50[storeId] !== undefined) {
+    return OPTION2_ZONES_50[storeId];
+  }
+  return -1;
+}
 const zoneColors50 = (() => {
   const c = zoneColors24.concat(Array.from({length: 26}, (_, i) => {
     const hue = Math.round((i * 360 / 26 + 15) % 360);
@@ -555,7 +580,9 @@ const zoneColors50 = (() => {
 function buildMode50() {
   return {
     numZones: 50, tbhCount: 35,
-    zoneData: buildZoneData50(), tbhInit: buildTbhInit50(), zoneColors: zoneColors50,
+    zoneData: buildZoneData50(), tbhInit: buildTbhInit50(),
+    zoneDataPerf: buildZoneData50Perf(), tbhInitPerf: buildTbhInit50Perf(),
+    zoneColors: zoneColors50,
     targetMin: 70, targetMax: 115, strongBonus: 20,
     storeZone: null, tbhLocs: null,
     hasGroundTruth: true
@@ -585,18 +612,20 @@ function switchMode(mode) {
   const m = MODES[mode];
   NUM_ZONES = m.numZones;
   TBH_COUNT = m.tbhCount;
-  ZONE_DATA = m.zoneData;
+  const usePerf = (mode === 50 && ACTIVE_CONFIG === 'experimental');
+  ZONE_DATA = usePerf ? m.zoneDataPerf : m.zoneData;
+  const chosenTbhInit = usePerf ? m.tbhInitPerf : m.tbhInit;
   zoneColors = m.zoneColors;
-  tbhLocs = m.tbhLocs || m.tbhInit.map(x => ({...x}));
+  tbhLocs = chosenTbhInit.map(x => ({...x}));
   m.tbhLocs = tbhLocs;
 
-  // 50-zone view loads the generated OPTION2_ZONES_50 snapshot directly.
-  // 24-zone view loads the active config's authoritative map (Option 1/2).
+  // 50-zone view loads OPTION2_ZONES_50 (Geographic) or OPTION2_ZONES_50_PERF
+  // (Performance) depending on the active Option. 24-zone view loads the active
+  // config's authoritative map (Option 1: INITIAL_ZONES_24, Option 2: OPTION2_ZONES).
   storeZone = new Int16Array(STORES.length).fill(-1);
   if (mode === 50) {
     for (let i = 0; i < STORES.length; i++) {
-      storeZone[i] = (typeof OPTION2_ZONES_50 !== 'undefined' && OPTION2_ZONES_50[STORES[i].id] !== undefined)
-        ? OPTION2_ZONES_50[STORES[i].id] : -1;
+      storeZone[i] = getTarget50Zone(STORES[i].id);
     }
     activeZones = new Set(Array.from({length: 50}, (_, i) => i));
   } else {
@@ -615,25 +644,49 @@ function switchMode(mode) {
   rebuildMarkers();
   render();
   renderTransitionTable();
-  toast(`Switched to ${NUM_ZONES}-zone ${NUM_ZONES === 50 ? '(Option 2 base + 26 new hires)' : 'view'}`);
+  toast(`Switched to ${NUM_ZONES}-zone ${NUM_ZONES === 50 ? (usePerf ? '(Performance)' : '(Geographic)') : 'view'}`);
 }
 
-// ===== ORIGINAL vs EXPERIMENTAL CONFIG TOGGLE =====
+// ===== OPTION 1 vs OPTION 2 TOGGLE (per mode) =====
+// 24 zones: Option 1 = Original, Option 2 = Manual.
+// 50 zones: Option 1 = Geographic, Option 2 = Performance.
+function optionLabel(mode, config) {
+  if (mode === 50) return config === 'experimental' ? 'Option 2 · Performance' : 'Option 1 · Geographic';
+  return config === 'experimental' ? 'Option 2 · Manual' : 'Option 1 · Original';
+}
+
 function switchConfig(name) {
-  if (name === ACTIVE_CONFIG && CURRENT_MODE !== 50) return;
+  if (name === ACTIVE_CONFIG) return;
   if (!ZONE_CONFIGS[name]) return;
-
-  // Switching config always returns to the 24-zone view (50-zone is built on
-  // the Option 2 base only).
-  if (CURRENT_MODE !== 24) CURRENT_MODE = 24;
-
-  // Save current live state back into its config slot
-  const cur = ZONE_CONFIGS[ACTIVE_CONFIG];
-  cur.savedStoreZone = storeZone;
-  cur.savedTbhLocs = tbhLocs;
-
-  // Load target config
   ACTIVE_CONFIG = name;
+
+  if (CURRENT_MODE === 50) {
+    // Swap the 50-zone Option 1/2 data in place (no mode change).
+    const m = MODES[50];
+    const usePerf = (name === 'experimental');
+    ZONE_DATA = usePerf ? m.zoneDataPerf : m.zoneData;
+    TBH_INIT = usePerf ? m.tbhInitPerf : m.tbhInit;
+    keepTogetherDmas = [];
+    boundaryOverrides = [];
+    protectedStores = new Set();
+    NUM_ZONES = 50; TBH_COUNT = 35;
+    tbhLocs = TBH_INIT.map(x => ({...x}));
+    m.tbhLocs = tbhLocs;
+    activeZones = new Set(Array.from({length: 50}, (_, i) => i));
+    storeZone = new Int16Array(STORES.length).fill(-1);
+    for (let i = 0; i < STORES.length; i++) {
+      storeZone[i] = getTarget50Zone(STORES[i].id);
+    }
+    m.storeZone = storeZone;
+    updateConfigUI();
+    rebuildMarkers();
+    render();
+    renderTransitionTable();
+    toast(`Switched to 50-zone ${usePerf ? 'Performance' : 'Geographic'} zones`);
+    return;
+  }
+
+  // Load target config (24-zone view)
   const cfg = ZONE_CONFIGS[name];
   ZONE_DATA = cfg.zoneData;
   TBH_INIT = cfg.tbhInit;
@@ -672,6 +725,8 @@ function updateConfigUI() {
   if (oBtn && eBtn) {
     const on = 'background:#1a6b3c;border-color:#2a8b4c;color:#fff';
     const off = 'background:#2a2a3e;border-color:#555;color:#e0e0e0';
+    oBtn.textContent = optionLabel(CURRENT_MODE, 'original');
+    eBtn.textContent = optionLabel(CURRENT_MODE, 'experimental');
     oBtn.style.cssText = ACTIVE_CONFIG === 'original' ? on : off;
     eBtn.style.cssText = ACTIVE_CONFIG === 'experimental' ? on : off;
   }
@@ -724,6 +779,43 @@ function getTarget24Zone(storeId) {
     return INITIAL_ZONES_24[storeId];
   }
   return -1;
+}
+
+// ===== STORE PERFORMANCE (5-Star) HELPERS =====
+// STORE_PERF (store_perf.js): { id: {t: tier 1|2|3 (0=unknown), s: avg 5-star|null} }
+function storePerf(si) {
+  const st = STORES[si];
+  if (!st) return null;
+  return (typeof STORE_PERF !== 'undefined' && STORE_PERF[st.id]) || null;
+}
+
+// Tier counts + mean 5-star over a list of store indices
+function perfSummary(indices) {
+  let t1 = 0, t2 = 0, t3 = 0, tu = 0, sum = 0, n = 0;
+  for (const i of indices) {
+    const p = storePerf(i);
+    if (!p) { tu++; continue; }
+    if (p.t === 1) t1++; else if (p.t === 2) t2++; else if (p.t === 3) t3++; else tu++;
+    if (p.s !== null && p.s !== undefined) { sum += p.s; n++; }
+  }
+  return { t1, t2, t3, tu, n, avg: n > 0 ? sum / n : null };
+}
+
+// Color a 5-star average (higher is better)
+function fiveStarColor(avg) {
+  if (avg === null || avg === undefined) return '#888';
+  if (avg < 3.0) return '#ff6b6b';
+  if (avg < 3.8) return '#ffd166';
+  return '#4ade80';
+}
+
+function perfSummaryHTML(pf) {
+  if (!pf) return '';
+  const avgTxt = pf.avg !== null ? pf.avg.toFixed(2) : '—';
+  const col = fiveStarColor(pf.avg);
+  return `Tier 1/2/3: <span style="color:#ff6b6b">${pf.t1}</span>/<span style="color:#ffd166">${pf.t2}</span>/<span style="color:#4ade80">${pf.t3}</span>` +
+    (pf.tu ? `<span style="color:#666"> (${pf.tu} n/a)</span>` : '') +
+    ` | Avg ★: <b style="color:${col}">${avgTxt}</b>`;
 }
 
 // Activate a TBH zone: move stores from their current zones (or unassigned) to the new zone
@@ -2108,12 +2200,19 @@ function renderZoneCards() {
   const grid = document.getElementById('zone-grid');
   const counts = zoneCounts();
   const tMin = getTargetMin();
+  // group store indices per zone once (for tier/5-star summaries)
+  const zoneSis = Array.from({ length: NUM_ZONES }, () => []);
+  for (let i = 0; i < STORES.length; i++) {
+    const z = storeZone[i];
+    if (z >= 0 && z < NUM_ZONES) zoneSis[z].push(i);
+  }
   let html = '';
   
   for (let z = 0; z < NUM_ZONES; z++) {
     const c = counts[z];
     const zMax = getTargetMax(z);
     const stats = zoneStats(z);
+    const pf = perfSummary(zoneSis[z]);
     const pct = Math.min(c / zMax * 100, 100);
     const color = zoneColors[z % zoneColors.length];
     
@@ -2137,6 +2236,7 @@ function renderZoneCards() {
       <div class="zbar"><div class="zbar-fill" style="width:${pct}%;background:${color}"></div></div>
       <div class="zsub">OA: ${ZONE_DATA[z].oa} | ${ZONE_DATA[z].region} | FOP: ${ZONE_DATA[z].fop}</div>
       <div class="zsub">Target: ${tMin}-${zMax} | Avg drive: ~${avgDriveMin}h</div>
+      <div class="zsub">${perfSummaryHTML(pf)}</div>
       <div class="zsub"><input class="zlat" value="${loc.lat.toFixed(4)}" size="7" onclick="event.stopPropagation()" onchange="updateCentroid(${z},'lat',this.value)"> <input class="zlon" value="${loc.lon.toFixed(4)}" size="7" onclick="event.stopPropagation()" onchange="updateCentroid(${z},'lon',this.value)"></div>
       <span class="zstatus zs-${statusClass}">${status}</span>
       ${z >= OA_COUNT ? '<span class="zhint">TBH</span>' : ''}
@@ -2492,6 +2592,13 @@ function renderAreaDetail() {
         `<span style="color:${zoneColors[z%zoneColors.length]}">${zoneName(+z)}: ${c}</span>`
       ).join(' &middot; ')
     : '<span style="color:#888">No assigned stores</span>';
+
+  // Tier distribution + average 5-star for this area
+  const ap = document.getElementById('area-perf');
+  if (ap) {
+    const pf = perfSummary(sis);
+    ap.innerHTML = sis.length ? perfSummaryHTML(pf) : '';
+  }
   
   // Populate zone dropdown
   const sel = document.getElementById('area-move-zone');
