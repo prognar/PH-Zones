@@ -582,13 +582,21 @@ function getTarget50Zone(storeId) {
   }
   return -1;
 }
-const zoneColors50 = (() => {
-  const c = zoneColors24.concat(Array.from({length: 26}, (_, i) => {
-    const hue = Math.round((i * 360 / 26 + 15) % 360);
-    return `hsl(${hue}, 70%, 55%)`;
-  }));
-  return c;
-})();
+// 50 distinct, perceptually-spread colors; assigned so bordering zones (computed
+// from store geography) get the most-distant colors - fixes look-alike neighbours
+// such as Minneapolis/Minneapolis 2, Buffalo/Albany, Salt Lake City/Sacramento.
+const zoneColors50 = [
+  "#1b981b","#e81aff","#1affba","#f3c968","#00b26b",
+  "#0000b2","#ff1aa3","#68f3e5","#1aff1a","#6d288a",
+  "#ffd11a","#a274e7","#c4e774","#f368c9","#e79774",
+  "#8a5928","#34a5b2","#2bee65","#8a00e6","#288a6d",
+  "#ff1ad1","#8a2832","#a0ee2b","#ff751a","#1ad1ff",
+  "#0036b2","#1a1aff","#680da5","#b2b200","#b20012",
+  "#286d8a","#a50d96","#ffa31a","#72981b","#8a8128",
+  "#0d4aa5","#ff1a1a","#81daa4","#74e780","#ff1a75",
+  "#8a286d","#ffff1a","#b20059","#ff5c5c","#b27d00",
+  "#68a0f3","#da819b","#1a5eff","#b24700","#ad5cff",
+];
 
 function buildMode50() {
   return {
