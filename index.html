@@ -128,6 +128,12 @@ body{font-family:system-ui,-apple-system,sans-serif;background:#111;color:#e0e0e
     <label class="top-toggle" style="font-size:11px;cursor:pointer;display:flex;align-items:center;gap:3px;color:#aaa">
       <input type="checkbox" id="toggle-zones" onchange="redrawMap()"> Zones
     </label>
+    <label class="top-toggle" style="font-size:11px;cursor:pointer;display:flex;align-items:center;gap:3px;color:#aaa">
+      <input type="checkbox" id="toggle-oa" checked onchange="redrawMap()"> Zone/OA
+    </label>
+    <label class="top-toggle" style="font-size:11px;cursor:pointer;display:flex;align-items:center;gap:3px;color:#aaa">
+      <input type="checkbox" id="toggle-cities" checked onchange="redrawMap()"> Cities
+    </label>
     <select id="filter-fop" onchange="setFopFilter(this.value)" style="font-size:10px;background:#2a2a3e;border:1px solid #555;border-radius:3px;color:#e0e0e0;padding:2px 4px"><option value="">All FOPs</option></select>
     <select id="filter-region" onchange="setRegionFilter(this.value)" style="font-size:10px;background:#2a2a3e;border:1px solid #555;border-radius:3px;color:#e0e0e0;padding:2px 4px"><option value="">All Regions</option></select>
     <div id="filter-summary" class="filter-summary hidden"></div>
@@ -1788,6 +1794,8 @@ let dragOA = null; // OA being dragged {z, isTbh}
 
 function viewToScreen(x, y) { return [x * sc + tx, y * sc + ty]; }
 function screenToView(sx, sy) { return [(sx - tx) / sc, (sy - ty) / sc]; }
+// Layer visibility: missing element counts as ON so behavior stays unchanged.
+function layerOn(id) { const el = document.getElementById(id); return !el || el.checked; }
 
 function initMap() {
   mapCanvas = document.getElementById('dot-canvas');
@@ -1810,7 +1818,7 @@ function initMap() {
     const [vx, vy] = screenToView(mx, my);
     
     // Check OA marker clicks — drag to move
-    for (const oa of oaMarkers) {
+    for (const oa of layerOn('toggle-oa') ? oaMarkers : []) {
       const [sx, sy] = viewToScreen(oa.px, oa.py);
       if (Math.hypot(mx - sx, my - sy) < 12) {
         dragOA = oa;
@@ -1865,7 +1873,7 @@ function initMap() {
       } else {
         hideTooltip();
       }
-      for (const oa of oaMarkers) {
+      for (const oa of layerOn('toggle-oa') ? oaMarkers : []) {
         const [sx, sy] = viewToScreen(oa.px, oa.py);
         const d = Math.hypot(mx - sx, my - sy);
         if (d < 8) {
@@ -2119,43 +2127,47 @@ function redrawMap() {
   ctx.globalAlpha = 1;
   
   // Draw OA markers
-  for (const oa of oaMarkers) {
-    const [sx, sy] = viewToScreen(oa.px, oa.py);
-    const rOa = oa.isTbh ? 5 : 7;
-    ctx.fillStyle = zoneColors[oa.z % zoneColors.length];
-    ctx.strokeStyle = '#fff';
-    ctx.lineWidth = 2;
-    ctx.beginPath();
-    ctx.arc(sx, sy, rOa, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.stroke();
-    
-    // Label below dot
-    ctx.fillStyle = '#fff';
-    ctx.font = '9px system-ui, sans-serif';
+  if (layerOn('toggle-oa')) {
+    for (const oa of oaMarkers) {
+      const [sx, sy] = viewToScreen(oa.px, oa.py);
+      const rOa = oa.isTbh ? 5 : 7;
+      ctx.fillStyle = zoneColors[oa.z % zoneColors.length];
+      ctx.strokeStyle = '#fff';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(sx, sy, rOa, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+
+      // Label below dot
+      ctx.fillStyle = '#fff';
+      ctx.font = '9px system-ui, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'top';
+      ctx.shadowColor = 'rgba(0,0,0,0.9)';
+      ctx.shadowBlur = 4;
+      ctx.fillText(oa.name, sx, sy + rOa + 3);
+      ctx.shadowBlur = 0;
+    }
+  }
+
+  // City labels
+  if (layerOn('toggle-cities')) {
+    ctx.font = '10px system-ui, sans-serif';
     ctx.textAlign = 'center';
-    ctx.textBaseline = 'top';
-    ctx.shadowColor = 'rgba(0,0,0,0.9)';
-    ctx.shadowBlur = 4;
-    ctx.fillText(oa.name, sx, sy + rOa + 3);
+    ctx.textBaseline = 'middle';
+    ctx.shadowColor = 'rgba(0,0,0,0.85)';
+    ctx.shadowBlur = 3;
+    ctx.fillStyle = 'rgba(255,255,255,0.7)';
+    for (const city of MAJOR_CITIES) {
+      const p = projection([city.lon, city.lat]);
+      if (!p) continue;
+      const [sx, sy] = viewToScreen(p[0], p[1]);
+      if (sx < 0 || sx > mapW || sy < 0 || sy > mapH) continue;
+      ctx.fillText(city.name, sx, sy);
+    }
     ctx.shadowBlur = 0;
   }
-  
-  // City labels
-  ctx.font = '10px system-ui, sans-serif';
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'middle';
-  ctx.shadowColor = 'rgba(0,0,0,0.85)';
-  ctx.shadowBlur = 3;
-  ctx.fillStyle = 'rgba(255,255,255,0.7)';
-  for (const city of MAJOR_CITIES) {
-    const p = projection([city.lon, city.lat]);
-    if (!p) continue;
-    const [sx, sy] = viewToScreen(p[0], p[1]);
-    if (sx < 0 || sx > mapW || sy < 0 || sy > mapH) continue;
-    ctx.fillText(city.name, sx, sy);
-  }
-  ctx.shadowBlur = 0;
   
   ctx.restore();
   
