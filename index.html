@@ -2839,12 +2839,40 @@ function importCSV(input) {
   input.value = '';
 }
 
+// Wrap a value in quotes (doubling any embedded quotes) whenever it contains a
+// comma, quote, or newline, so free-text fields like Area ("Brundage, Christina")
+// can't shift the columns after them.
+function csvField(v) {
+  const s = (v === null || v === undefined) ? '' : String(v);
+  return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+}
+
+// OA assigned to a zone, or 'OPEN' when unassigned / not yet staffed (TBD, New Hire).
+function exportOa(z) {
+  if (z < 0) return 'OPEN';
+  const oa = ZONE_DATA[z] && ZONE_DATA[z].oa;
+  if (!oa || oa === 'TBD' || oa === 'New Hire') return 'OPEN';
+  return oa;
+}
+
 function exportCSV() {
-  let csv = 'STORE_ID,ZONE,ZONE_NAME,AREA,DMA,LAT,LON,FRANCHISEE\n';
+  const header = ['STORE_ID','ZONE_NAME','OA','DMA','FRANCHISEE','REGION','AREA','LAT','LON'];
+  let csv = header.join(',') + '\n';
   for (let i = 0; i < STORES.length; i++) {
     const s = STORES[i];
     const z = storeZone[i];
-    csv += `${s.id},${z >= 0 ? z+1 : ''},${z >= 0 ? zoneName(z) : ''},${s.area},${s.dma},${s.lat},${s.lon},${s.franchisee || ''}\n`;
+    const row = [
+      s.id,
+      z >= 0 ? zoneName(z) : '',
+      exportOa(z),
+      s.dma,
+      s.franchisee || '',
+      s.region || '',
+      s.area,
+      s.lat,
+      s.lon
+    ];
+    csv += row.map(csvField).join(',') + '\n';
   }
   const blob = new Blob([csv], {type: 'text/csv'});
   const url = URL.createObjectURL(blob);
